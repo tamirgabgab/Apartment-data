@@ -58,8 +58,23 @@ the README.
   normal), `www.cbs.gov.il`, `apartment-data.vercel.app`. Yad2 / Madlan are not allowed
   on purpose (deferred). GitHub Actions is not affected by these settings.
 - **Website:** https://apartment-data.vercel.app is public (no Vercel login).
-- **Secrets still needed** (GitHub repository secrets): `DATABASE_URL` (Supabase
-  session pooler connection string) for the scheduled jobs.
+- **Phase 1:** `python -m apartment_data.reference.localities [--load]` builds
+  `localities` (newest CBS file, 1,484 localities, 82 cities) and `locality_aliases`
+  (2,864 normalized spellings, ambiguous ones skipped) and writes CSVs to `data/reference/`.
+  - `localities` is loaded in Supabase (checksum matched the Python output). It was loaded
+    once through the Postgres `http` extension, which fetched the CBS file directly.
+  - `locality_aliases` is **not loaded yet**: too large to paste through the MCP. Run the
+    command with `--load` once `DATABASE_URL` is available.
+  - Cleanup pending: `drop extension if exists http;` hit the Supabase MCP confirmation
+    prompt and timed out. Run it in the SQL Editor or confirm it in a later session.
+- **Secrets still needed:**
+  - In the cloud environment (environment variables, new session picks them up):
+    `DATABASE_URL` (Supabase session pooler string) for loading, and
+    `SUPABASE_SERVICE_ROLE_KEY` for raw-response uploads to Supabase Storage.
+  - The same two as GitHub repository secrets for the scheduled jobs.
+- **Raw nadlan responses** go to a private Supabase Storage bucket (owner decision).
+- **Phase 3 pilot cities** (owner decision): Tel Aviv-Yafo, Jerusalem, Haifa, Beer Sheva,
+  Sderot.
 
 ---
 
@@ -220,8 +235,9 @@ Cleaning rules (applied before any statistic):
 - [x] Confirm https://apartment-data.vercel.app opens without a Vercel login.
 
 ### Phase 1 — Reference data
-- [ ] Ingest the CBS localities file into `localities`, mark `is_city`.
-- [ ] Build `locality_aliases`.
+- [x] Ingest the CBS localities file into `localities`, mark `is_city`.
+- [x] Build `locality_aliases` (code done).
+- [ ] Load `locality_aliases` into Supabase (needs `DATABASE_URL`).
 
 ### Phase 2 — CBS series
 - [ ] Housing price index (national + districts) and CPI into `official_indices`.
@@ -293,3 +309,7 @@ All Phase 0 questions are answered (see section 2). New questions go here.
   data, and that the production website is public. Found the data.gov.il datasets
   `citiesandsettelments` and `localities-in-israel` for Phase 1. Next: Phase 3 nadlan API
   investigation or Phase 1 localities, per owner choice.
+- **2026-10-30 (6)** — Owner chose Phase 1 then Phase 3, all localities, load now, mixed
+  pilot cities, Supabase Storage for raw data. Phase 1 code and tests added; `localities`
+  loaded (1,484 rows, 82 cities). Aliases wait for `DATABASE_URL`; `http` extension drop
+  is pending (MCP confirmation timed out). Next: Phase 3 nadlan API investigation.
