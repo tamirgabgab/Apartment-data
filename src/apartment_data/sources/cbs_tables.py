@@ -16,6 +16,7 @@ import csv
 import io
 import re
 import time
+from collections import Counter
 from collections.abc import Iterable, Iterator
 from dataclasses import astuple, dataclass, fields
 from datetime import date
@@ -149,32 +150,60 @@ def _number(value: Any) -> float | None:
         return None
 
 
-def _column_map(rows: list[list[Any]], header: int) -> dict[int, tuple[date, str]]:
-    """Map column index to (quarter start, measure) from the three header rows."""
-    years, periods, measures = rows[header], rows[header + 1], rows[header + 2]
-    width = max(len(years), len(periods), len(measures))
-    columns = {}
-    year = period = None
-    for j in range(1, width):
-        y = years[j] if j < len(years) else None
-        p = periods[j] if j < len(periods) else None
-        m = measures[j] if j < len(measures) else None
-        if y is not None and re.fullmatch(r"\d{4}(\.0)?", str(y)):
-            year = int(float(y))
-        if p is not None:
-            period = re.sub(r"\s+", " ", str(p))
-        if m is None or year is None or period not in QUARTER_MONTH:
-            continue
-        text = str(m).lower()
-        if "average" in text:
-            measure = "price"
-        elif "transac" in text:
-            measure = "n_deals"
-        elif "sampling" in text:
-            measure = "sampling_error"
+def _column_map(rows: list[list[Any]], header: int, spec: TableSpec) -> dict[int, tuple[date, str]]:
+    """Map column index to (quarter start, measure) from the header rows.
+
+    The header is not reliable: merged year cells are sometimes misplaced, quarter labels
+    have typos (the same quarter twice) and the measure row is sometimes mislabeled. The
+    'Annual average' columns are the anchors instead. Quarters before the first one are the
+    last quarters of the first printed year; quarters after each one are the first quarters
+    of the following year. Within a period's group of columns the first is the average price
+    and the second is the table's secondary measure.
+    """
+    years, periods = rows[header], rows[header + 1]
+    starts = [
+        (j, re.sub(r"\s+", " ", str(p)).strip())
+        for j, p in enumerate(periods)
+        if j > 0 and p is not None and str(p).strip()
+    ]
+    is_annual = [label not in QUARTER_MONTH for _, label in starts]
+    if not any(is_annual):
+        raise ValueError("no 'Annual average' column to anchor the quarters")
+    annual_columns = [j for (j, _), annual in zip(starts, is_annual, strict=True) if annual]
+
+    # Each printed year names the run its cell sits in (one run per annual average before
+    # it), so every label implies a first year; take the most common answer.
+    votes: Counter[int] = Counter()
+    for j, y in enumerate(years):
+        if j > 0 and y is not None and re.fullmatch(r"\d{4}(\.0)?", str(y).strip()):
+            votes[int(float(y)) - sum(1 for a in annual_columns if a < j)] += 1
+    if not votes:
+        raise ValueError("no year in the header")
+    year = votes.most_common(1)[0][0]
+
+    # Split the quarter groups into runs separated by annual-average columns.
+    runs: list[list[int]] = [[]]
+    for k, annual in enumerate(is_annual):
+        if annual:
+            runs.append([])
         else:
-            continue
-        columns[j] = (date(year, QUARTER_MONTH[period], 1), measure)
+            runs[-1].append(k)
+
+    secondary = "n_deals" if spec.kind == "sale" else "sampling_error"
+    columns: dict[int, tuple[date, str]] = {}
+    for r, run in enumerate(runs):
+        if len(run) > 4:
+            raise ValueError(f"{len(run)} quarters between annual averages")
+        run_year = year + r
+        # The leading run ends the first year; later runs start a new year.
+        first_quarter = 4 - len(run) if r == 0 else 0
+        for n, k in enumerate(run):
+            j = starts[k][0]
+            period = date(run_year, 3 * (first_quarter + n) + 1, 1)
+            end = starts[k + 1][0] if k + 1 < len(starts) else j + 2
+            columns[j] = (period, "price")
+            if end - j >= 2:
+                columns[j + 1] = (period, secondary)
     return columns
 
 
@@ -188,7 +217,11 @@ def parse_table(
     header = next(
         i for i, row in enumerate(rows) if row and str(row[0] or "").startswith("Districts")
     )
-    columns = _column_map(rows, header)
+    columns = _column_map(rows, header, spec)
+    published = date(int(edition[:4]), int(edition[5:7]), 1)
+    latest = max(period for period, _ in columns.values())
+    if latest >= published:
+        raise ValueError(f"quarter {latest} is not before the edition date {edition}")
     results: list[AveragePrice] = []
     section = None
     geo: tuple[str, int] | None = None
@@ -257,11 +290,13 @@ def _geography(label: str, section: str | None) -> tuple[str, int]:
 
 
 def merge_editions(values: Iterable[AveragePrice]) -> list[AveragePrice]:
-    """Keep one value per key, from the newest edition."""
+    """Keep one value per key: the newest edition that publishes a price, else the newest."""
     best: dict[tuple, AveragePrice] = {}
     for v in values:
         key = (v.kind, v.geo_level, v.geo_code, v.period, v.rooms)
-        if key not in best or v.edition > best[key].edition:
+        current = best.get(key)
+        rank = (v.avg_price is not None, v.edition)
+        if current is None or rank > (current.avg_price is not None, current.edition):
             best[key] = v
     return sorted(best.values(), key=lambda v: (v.kind, v.geo_level, v.geo_code, v.period, v.rooms))
 
@@ -380,10 +415,15 @@ def main(argv: list[str] | None = None) -> None:
         writer.writerows(astuple(row) for row in rows)
 
     if args.load:
-        from apartment_data.storage.db import connect, upsert_average_prices
+        from apartment_data.storage.db import (
+            connect,
+            replace_average_prices,
+            upsert_average_prices,
+        )
 
         with connect(settings) as conn:
-            upsert_average_prices(conn, rows)
+            # A backfill saw every edition, so it rebuilds the table from scratch.
+            (replace_average_prices if args.backfill else upsert_average_prices)(conn, rows)
         print("Loaded into the database.")
 
 

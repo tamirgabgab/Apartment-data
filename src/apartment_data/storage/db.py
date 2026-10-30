@@ -72,7 +72,11 @@ def upsert_official_indices(conn: psycopg.Connection, values: Iterable[IndexValu
 
 
 def upsert_average_prices(conn: psycopg.Connection, values: Iterable[AveragePrice]) -> None:
-    """Insert or update CBS average prices, never replacing a value from a newer edition."""
+    """Insert or update CBS average prices.
+
+    A newer edition replaces an older one, except that a missing price never replaces a
+    published one, and a published price always replaces a missing one.
+    """
     with conn.cursor() as cur:
         cur.executemany(
             """
@@ -85,10 +89,19 @@ def upsert_average_prices(conn: psycopg.Connection, values: Iterable[AveragePric
                 sampling_error = excluded.sampling_error,
                 edition = excluded.edition,
                 fetched_at = now()
-            where excluded.edition >= cbs_average_prices.edition
+            where (excluded.avg_price is not null) >= (cbs_average_prices.avg_price is not null)
+                and excluded.edition >= cbs_average_prices.edition
+                or excluded.avg_price is not null and cbs_average_prices.avg_price is null
             """,
             [astuple(v) for v in values],
         )
+
+
+def replace_average_prices(conn: psycopg.Connection, values: Iterable[AveragePrice]) -> None:
+    """Rebuild the whole table, for a backfill that walked every edition."""
+    with conn.cursor() as cur:
+        cur.execute("delete from public.cbs_average_prices")
+    upsert_average_prices(conn, values)
 
 
 def replace_aliases(conn: psycopg.Connection, aliases: Mapping[str, int]) -> None:
