@@ -10,10 +10,22 @@ from apartment_data.reference.localities import Locality
 from apartment_data.sources.cbs_index import IndexValue
 
 
+class DatabaseConfigError(RuntimeError):
+    """DATABASE_URL is missing or malformed. Never carries any part of the URL."""
+
+
 def connect(settings: Settings) -> psycopg.Connection:
     if not settings.database_url:
-        raise RuntimeError("DATABASE_URL is not set")
-    return psycopg.connect(settings.database_url)
+        raise DatabaseConfigError("DATABASE_URL is not set")
+    try:
+        return psycopg.connect(settings.database_url)
+    except psycopg.ProgrammingError:
+        # psycopg quotes the offending part of the URL, which can be the password, and
+        # GitHub Actions logs are public. Report the problem without the original message.
+        raise DatabaseConfigError(
+            "DATABASE_URL is not a valid connection string. Check that the password has "
+            "only letters and digits and that '[YOUR-PASSWORD]' was fully replaced."
+        ) from None
 
 
 def upsert_localities(conn: psycopg.Connection, localities: Iterable[Locality]) -> None:
