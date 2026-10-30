@@ -39,9 +39,11 @@ the README.
     `deals`, `official_indices`, `city_price_stats`, `ingestion_runs`). RLS is on with
     no policies on purpose: the website reads static JSON, only the ingestion jobs
     (postgres role via `DATABASE_URL`) touch the database.
-  - Migration `index_tweaks` (`supabase/migrations/20261030000100_index_tweaks.sql`)
-    is **not applied yet**: the Supabase server asked for a confirmation (it contains a
-    `drop index`) and it timed out. Apply it in the next session.
+  - Migration `index_tweaks` applied: index on `locality_aliases.locality_code`.
+  - Deferred: `drop index public.deals_valid_locality_date_idx` (redundant partial index,
+    saves a little storage). The Supabase MCP asks for a confirmation on destructive
+    statements and the prompt never reached the owner, so it was split out. Run it in
+    a later migration, or by hand in the Supabase SQL Editor.
 - **Vercel:** project `apartment-data` (id `prj_859ty9pe0LsMUupyS13M2bnI4U9C`, team
   `team_ZhDyYoJQ7ch1tCHoRn41zIrH`, Hobby plan), linked to `tamirgabgab/Apartment-data`,
   root directory `web`, no deployment yet. Production deploys from `main`, so the public
@@ -207,7 +209,8 @@ Cleaning rules (applied before any statistic):
 - [x] Python project skeleton: `pyproject.toml`, `ruff`, `pytest`, `.gitignore`, src layout.
 - [x] CI workflow (lint + tests).
 - [x] Create the Supabase project and apply the initial schema.
-- [ ] Apply the `index_tweaks` migration.
+- [x] Apply the `index_tweaks` migration.
+- [ ] Drop the redundant partial index `deals_valid_locality_date_idx` (deferred).
 - [x] Create the Vercel project and link it to the repository.
 - [ ] Add `DATABASE_URL` as a GitHub repository secret.
 - [ ] Merge to `main`, get the production URL, put it in `README.md`.
@@ -278,4 +281,6 @@ All Phase 0 questions are answered (see section 2). New questions go here.
   and project, `DATABASE_URL` secret, network allow-list. Next: finish Phase 0, then
   Phase 1 (CBS localities).
 - **2026-10-30 (4)** — Owner approved Vercel access; Vercel project created and linked.
-  The `index_tweaks` migration timed out again on the Supabase confirmation prompt.
+  The `index_tweaks` migration timed out again on the Supabase confirmation prompt, so
+  it was split: the index creation is applied, the index drop is deferred. Merged the
+  branch into `main` for a first production deployment on Vercel.
