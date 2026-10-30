@@ -51,3 +51,33 @@ def test_fetch_series_follows_pages_and_caches(tmp_path):
     assert seen == [1, 2]
     assert [v.value for v in parse_monthly("1", pages)] == [1.0, 2.0]
     assert (tmp_path / "cbs" / "index_1.json.gz").exists()
+
+
+def test_main_keeps_going_when_one_series_fails(tmp_path, monkeypatch, capsys):
+    import pytest
+
+    from apartment_data.sources import cbs_index
+
+    def handler(request):
+        code = request.url.params["id"]
+        if code == "60000":
+            return httpx.Response(500, json={"Message": "Error: Price Data"})
+        return httpx.Response(
+            200, json={"month": [{"code": int(code), "date": [_point(2020, 1, 1.0)]}]}
+        )
+
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        cbs_index.httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(handler))
+    )
+    monkeypatch.setenv("RAW_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("REQUEST_DELAY_SECONDS", "0")
+
+    with pytest.raises(SystemExit, match="60000"):
+        cbs_index.main(["--out", str(tmp_path)])
+
+    out = capsys.readouterr().out
+    assert "::warning::60000" in out
+    assert "120010: 1 months" in out
+    rows = (tmp_path / "official_indices.csv").read_text(encoding="utf-8").splitlines()
+    assert len(rows) == 1 + len(cbs_index.SERIES) - 1

@@ -38,11 +38,11 @@ jobs:
             exit 1
           fi
       - name: Localities and aliases
-        if: github.event_name == 'schedule' || inputs.job == 'all' || inputs.job == 'localities'
+        if: "!cancelled() && (github.event_name == 'schedule' || inputs.job == 'all' || inputs.job == 'localities')"
         run: python -m apartment_data.reference.localities --load
       - name: CBS price indices
-        if: github.event_name == 'schedule' || inputs.job == 'all' || inputs.job == 'cbs-index'
+        if: "!cancelled() && (github.event_name == 'schedule' || inputs.job == 'all' || inputs.job == 'cbs-index')"
         run: python -m apartment_data.sources.cbs_index --load
       - name: CBS average prices and rents
-        if: github.event_name == 'schedule' || inputs.job == 'all' || inputs.job == 'cbs-tables'
+        if: "!cancelled() && (github.event_name == 'schedule' || inputs.job == 'all' || inputs.job == 'cbs-tables')"
         run: python -m apartment_data.sources.cbs_tables --load ${{ inputs.backfill && '--backfill' || '' }}

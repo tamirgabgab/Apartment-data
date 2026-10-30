@@ -38,6 +38,9 @@ SERIES = {
     "120010": "מדד המחירים לצרכן - כללי",
 }
 
+# The API answers 500 for some ranges of some series; start those where it works.
+SERIES_START = {"70000": "01-2019"}
+
 
 @dataclass(frozen=True)
 class IndexValue:
@@ -78,7 +81,7 @@ class CbsIndexClient:
                     "id": code,
                     "format": "json",
                     "download": "false",
-                    "startPeriod": "01-1950",
+                    "startPeriod": SERIES_START.get(code, "01-1950"),
                     "endPeriod": f"12-{date.today().year}",
                     "PageSize": PAGE_SIZE,
                     "Page": page,
@@ -127,8 +130,15 @@ def main(argv: list[str] | None = None) -> None:
     settings = load_settings()
     client = CbsIndexClient(settings.raw_data_dir, settings.request_delay_seconds)
     rows: list[IndexValue] = []
+    failed = []
     for code in SERIES:
-        series = parse_monthly(code, client.fetch_series(code))
+        try:
+            series = parse_monthly(code, client.fetch_series(code))
+        except httpx.HTTPError as exc:
+            # One broken series should not block the others; the job still fails at the end.
+            print(f"::warning::{code}: {type(exc).__name__}: {exc}")
+            failed.append(code)
+            continue
         print(f"{code}: {len(series)} months, {series[0].period} .. {series[-1].period}")
         rows.extend(series)
 
@@ -144,6 +154,8 @@ def main(argv: list[str] | None = None) -> None:
         with connect(settings) as conn:
             upsert_official_indices(conn, rows)
         print("Loaded into the database.")
+    if failed:
+        raise SystemExit(f"Failed series: {', '.join(failed)}")
 
 
 if __name__ == "__main__":
