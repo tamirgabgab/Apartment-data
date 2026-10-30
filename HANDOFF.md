@@ -18,22 +18,42 @@ the README.
 
 | Topic | Decision |
 |---|---|
-| Scope | Cities only for now (exact definition still open, see section 9) |
+| Scope | Cities only for now: CBS municipal status "עירייה" (about 80 cities) |
 | History | As far back as possible, target from 2000 onward |
-| Output | Interactive web UI (HTML), public link in `README.md` |
-| Storage / hosting | Supabase (Postgres) for data, Vercel for the website |
+| Output | Interactive, **public** website, link in `README.md` |
+| Website stack | Plain static HTML + a chart library (ECharts / Chart.js), no framework |
+| Storage / hosting | New dedicated Supabase project (data) and Vercel project (website) |
+| Update frequency | Deals weekly, CBS series monthly |
 | Price type | Executed transactions only. Asking prices of active listings are **out of scope** |
 | Yad2 / Madlan | Allowed, but only their executed-deal data, not listings |
+| Dev network | Owner will add the source hosts to the environment's Allowed domains |
 
 ## 3. Current state
 
-- Repository contains `README.md`, `CLAUDE.md` and this file. No code yet.
-- **The cloud dev environment cannot reach the data sources**: the network policy
-  blocks `www.nadlan.gov.il`, `api.cbs.gov.il`, `data.gov.il`, `www.yad2.co.il` and
-  `www.madlan.co.il` (proxy returns 403 on CONNECT). To develop and test fetchers in
-  a session, those hosts must be added under Allowed domains in the environment's
-  network settings (https://code.claude.com/docs/en/cloud-environments#network-access).
-  Scheduled ingestion in GitHub Actions is not affected by this.
+- Phase 0 mostly done: Python package skeleton (`src/apartment_data/`), `pyproject.toml`,
+  ruff + pytest, CI workflow (`.github/workflows/ci.yml`), `.env.example`,
+  placeholder website (`web/index.html`, Hebrew RTL).
+- **Supabase:** project `apartment-data`, ref `mbjownaqzevdhinczrgx`, region
+  `eu-central-1` (Frankfurt), free plan, org "tamirgabgab's Org".
+  - Migration `initial_schema` applied (tables: `localities`, `locality_aliases`,
+    `deals`, `official_indices`, `city_price_stats`, `ingestion_runs`). RLS is on with
+    no policies on purpose: the website reads static JSON, only the ingestion jobs
+    (postgres role via `DATABASE_URL`) touch the database.
+  - Migration `index_tweaks` (`supabase/migrations/20261030000100_index_tweaks.sql`)
+    is **not applied yet**: the Supabase server asked for a confirmation (it contains a
+    `drop index`) and it timed out. Apply it in the next session.
+- **Vercel:** project not created yet. The Vercel MCP connection lacks access to the
+  `tamirgabgab` scope (team id `team_ZhDyYoJQ7ch1tCHoRn41zIrH`, Hobby plan); the owner
+  needs to approve a consent link (`authorize_team_access`), then create the project
+  with `create_git_project` (repo `tamirgabgab/Apartment-data`, root directory `web`).
+  Production deploys from `main`, so the public link exists only after merging to `main`.
+- **Network:** the session network still blocks `www.nadlan.gov.il`, `api.cbs.gov.il`,
+  `data.gov.il`, `www.cbs.gov.il`, `www.yad2.co.il`, `www.madlan.co.il` (proxy 403 on
+  CONNECT). The owner chose to add them under Allowed domains
+  (https://code.claude.com/docs/en/cloud-environments#network-access); a new session
+  may be needed for the change to take effect. GitHub Actions is not affected.
+- **Secrets still needed** (GitHub repository secrets): `DATABASE_URL` (Supabase
+  session pooler connection string) for the scheduled jobs.
 
 ---
 
@@ -181,10 +201,15 @@ Cleaning rules (applied before any statistic):
 ## 8. Roadmap
 
 ### Phase 0 — Setup
-- [ ] Answer the remaining open questions (section 9).
+- [x] Answer the open questions (section 9).
 - [ ] Allow the source hosts in the environment network settings (section 3).
-- [ ] Python project skeleton: `pyproject.toml`, `ruff`, `pytest`, `.gitignore`, src layout.
-- [ ] Create / connect the Supabase project and the Vercel project.
+- [x] Python project skeleton: `pyproject.toml`, `ruff`, `pytest`, `.gitignore`, src layout.
+- [x] CI workflow (lint + tests).
+- [x] Create the Supabase project and apply the initial schema.
+- [ ] Apply the `index_tweaks` migration.
+- [ ] Create the Vercel project (after the owner approves Vercel access).
+- [ ] Add `DATABASE_URL` as a GitHub repository secret.
+- [ ] Merge to `main`, get the production URL, put it in `README.md`.
 
 ### Phase 1 — Reference data
 - [ ] Ingest the CBS localities file into `localities`, mark `is_city`.
@@ -227,16 +252,7 @@ Cleaning rules (applied before any statistic):
 
 ## 9. Open questions (for the project owner)
 
-1. **City definition:** CBS municipal status "עירייה" (about 80 cities), or a
-   population threshold (for example 20,000+ residents)?
-2. **Network access:** can the source hosts be added to the environment's Allowed
-   domains, so fetchers can be developed and tested inside the session?
-3. **Supabase / Vercel accounts:** use an existing Supabase project and Vercel team,
-   or create new ones dedicated to this project?
-4. **Website stack:** plain HTML + charts (simplest), or Next.js (more room to grow)?
-5. **Update frequency:** weekly, or monthly is enough?
-6. **Public site:** the link in the README will be public. Is that OK? (All data
-   comes from public government sources.)
+All Phase 0 questions are answered (see section 2). New questions go here.
 
 ## 10. Risks
 
@@ -255,3 +271,8 @@ Cleaning rules (applied before any statistic):
   on Vercel, Supabase, executed deals only). Found that Yad2 / Madlan deal data is
   derived from the Tax Authority, so nadlan.gov.il is the primary source. Found that
   the session network blocks all data source hosts. Next: answer section 9, then Phase 0.
+- **2026-10-30 (3)** — Owner answered all open questions (section 2). Phase 0: added the
+  Python skeleton, CI, placeholder site, created Supabase project `apartment-data` and
+  applied the initial schema. Pending: `index_tweaks` migration, Vercel access approval
+  and project, `DATABASE_URL` secret, network allow-list. Next: finish Phase 0, then
+  Phase 1 (CBS localities).

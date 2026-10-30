@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>מחירי דירות בערים</title>
+  <meta name="description" content="מעקב אחר מחירי דירות בערי ישראל לאורך זמן, לפי עסקאות שבוצעו בפועל.">
+  <style>
+    :root {
+      --bg: #f7f7f5;
+      --surface: #ffffff;
+      --text: #1d1d1b;
+      --muted: #5f5f5a;
+      --accent: #1f6f5c;
+      --border: #e2e2dd;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #141413;
+        --surface: #1f1f1d;
+        --text: #ececea;
+        --muted: #a3a39d;
+        --accent: #5cc3a6;
+        --border: #33332f;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", "Rubik", "Heebo", sans-serif;
+      line-height: 1.6;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 48px 16px;
+    }
+    h1 { font-size: 1.9rem; margin: 0 0 8px; }
+    .lead { color: var(--muted); margin: 0 0 32px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+    }
+    .status {
+      display: inline-block;
+      font-size: 0.85rem;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: 999px;
+      padding: 2px 12px;
+      margin-bottom: 12px;
+    }
+    ul { padding-inline-start: 20px; margin: 8px 0 0; }
+    footer { color: var(--muted); font-size: 0.85rem; margin-top: 32px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>מחירי דירות בערים</h1>
+    <p class="lead">מעקב אחר מחירי דירות בערי ישראל לאורך זמן, לפי עסקאות שבוצעו בפועל.</p>
+
+    <section class="card">
+      <span class="status">בבנייה</span>
+      <p>האתר עדיין בבנייה. בקרוב יופיעו כאן:</p>
+      <ul>
+        <li>גרף מחיר חציוני למ"ר לכל עיר, לפי רבעון.</li>
+        <li>השוואה בין ערים, ופילוח לפי מספר חדרים ולפי חדש מול יד שנייה.</li>
+        <li>מחירים נומינליים וריאליים (אחרי ניכוי אינפלציה).</li>
+        <li>השוואה למדד מחירי הדירות של הלמ"ס.</li>
+      </ul>
+    </section>
+
+    <footer>מקורות: רשות המסים (nadlan.gov.il) והלשכה המרכזית לסטטיסטיקה.</footer>
+  </main>
+</body>
+</html>

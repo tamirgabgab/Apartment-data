@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Data (raw responses and local databases are never committed)
+data/
+*.duckdb
+*.parquet
+
+# Vercel
+.vercel/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
