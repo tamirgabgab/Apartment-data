@@ -1,0 +1,41 @@
+name: Update data
+
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: Which data to update
+        type: choice
+        options: [all, localities, cbs-index]
+        default: all
+  schedule:
+    # Monthly, after the CBS publishes the CPI (15th) and the housing price index.
+    - cron: "17 3 20 * *"
+
+concurrency: update-data
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e .
+      - name: Check secrets
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::The DATABASE_URL repository secret is not set."
+            exit 1
+          fi
+      - name: Localities and aliases
+        if: github.event_name == 'schedule' || inputs.job == 'all' || inputs.job == 'localities'
+        run: python -m apartment_data.reference.localities --load
+      - name: CBS price indices
+        if: github.event_name == 'schedule' || inputs.job == 'all' || inputs.job == 'cbs-index'
+        run: python -m apartment_data.sources.cbs_index --load

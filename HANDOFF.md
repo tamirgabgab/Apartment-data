@@ -51,13 +51,39 @@ the README.
   preview deployments. Deployment protection is the default (`all_except_custom_domains`);
   the session network cannot reach `vercel.app`, so the owner has to confirm the
   production URL opens without a Vercel login. Relax protection if it does not.
-- **Network:** the session network still blocks `www.nadlan.gov.il`, `api.cbs.gov.il`,
-  `data.gov.il`, `www.cbs.gov.il`, `www.yad2.co.il`, `www.madlan.co.il` (proxy 403 on
-  CONNECT). The owner chose to add them under Allowed domains
-  (https://code.claude.com/docs/en/cloud-environments#network-access); a new session
-  may be needed for the change to take effect. GitHub Actions is not affected.
-- **Secrets still needed** (GitHub repository secrets): `DATABASE_URL` (Supabase
-  session pooler connection string) for the scheduled jobs.
+- **Network:** the environment uses Custom network access with the source hosts in
+  Allowed domains. Verified working on 2026-10-30: `www.nadlan.gov.il` (site HTML),
+  `api.cbs.gov.il` (price-index API returns JSON; the bare root does not answer, that is
+  normal), `data.gov.il` (CKAN API returns JSON; the bare root returns a WAF 403, that is
+  normal), `www.cbs.gov.il`, `apartment-data.vercel.app`. Yad2 / Madlan are not allowed
+  on purpose (deferred). GitHub Actions is not affected by these settings.
+- **Website:** https://apartment-data.vercel.app is public (no Vercel login).
+- **Phase 1:** `python -m apartment_data.reference.localities [--load]` builds
+  `localities` (newest CBS file, 1,484 localities, 82 cities) and `locality_aliases`
+  (2,864 normalized spellings, ambiguous ones skipped) and writes CSVs to `data/reference/`.
+  - `localities` is loaded in Supabase (checksum matched the Python output). It was loaded
+    once through the Postgres `http` extension, which fetched the CBS file directly.
+  - `locality_aliases` is **not loaded yet**: too large to paste through the MCP. Run the
+    command with `--load` once `DATABASE_URL` is available.
+  - Cleanup pending: `drop extension if exists http;` hit the Supabase MCP confirmation
+    prompt and timed out. Run it in the SQL Editor or confirm it in a later session.
+- **Secrets still needed:**
+  - In the cloud environment (environment variables, new session picks them up):
+    `DATABASE_URL` (Supabase session pooler string) for loading, and
+    `SUPABASE_SERVICE_ROLE_KEY` for raw-response uploads to Supabase Storage.
+  - The same two as GitHub repository secrets for the scheduled jobs.
+- **nadlan.gov.il is blocked by its Terms of Use** (see `docs/sources/nadlan.md`): they
+  forbid scripts, bots and API use without explicit permission, and any non-personal use
+  needs written approval; the deals API is behind reCAPTCHA Enterprise. Nothing is fetched
+  from it. Owner decision: two tracks in parallel:
+  1. Build the site now on official CBS data (Phase 2).
+  2. Request deal data: drafts in `docs/requests/permission-nadlan.md` (Survey of Israel)
+     and `docs/requests/foi-tax-authority.md` (FOI request). The owner sends them.
+- **Phase 2:** `python -m apartment_data.sources.cbs_index [--load]` fetches the national
+  and six district housing price indices and the CPI (1,928 monthly values) as published,
+  with their base. Not loaded yet (needs `DATABASE_URL`). District indices start 2017-10.
+- If deal data arrives later: raw responses go to a private Supabase Storage bucket, and the
+  pilot cities are Tel Aviv-Yafo, Jerusalem, Haifa, Beer Sheva, Sderot (owner decisions).
 
 ---
 
@@ -206,7 +232,7 @@ Cleaning rules (applied before any statistic):
 
 ### Phase 0 — Setup
 - [x] Answer the open questions (section 9).
-- [ ] Allow the source hosts in the environment network settings (section 3).
+- [x] Allow the source hosts in the environment network settings (section 3).
 - [x] Python project skeleton: `pyproject.toml`, `ruff`, `pytest`, `.gitignore`, src layout.
 - [x] CI workflow (lint + tests).
 - [x] Create the Supabase project and apply the initial schema.
@@ -215,18 +241,22 @@ Cleaning rules (applied before any statistic):
 - [x] Create the Vercel project and link it to the repository.
 - [ ] Add `DATABASE_URL` as a GitHub repository secret.
 - [x] Merge to `main`, get the production URL, put it in `README.md`.
-- [ ] Owner confirms https://apartment-data.vercel.app opens without a Vercel login.
+- [x] Confirm https://apartment-data.vercel.app opens without a Vercel login.
 
 ### Phase 1 — Reference data
-- [ ] Ingest the CBS localities file into `localities`, mark `is_city`.
-- [ ] Build `locality_aliases`.
+- [x] Ingest the CBS localities file into `localities`, mark `is_city`.
+- [x] Build `locality_aliases` (code done).
+- [ ] Load `locality_aliases` into Supabase (needs `DATABASE_URL`).
 
 ### Phase 2 — CBS series
-- [ ] Housing price index (national + districts) and CPI into `official_indices`.
+- [x] Housing price index (national + districts) and CPI fetcher (`sources/cbs_index.py`).
+- [ ] Load them into `official_indices` (needs `DATABASE_URL`).
 - [ ] CBS average prices by city for validation.
 
-### Phase 3 — Transactions (nadlan.gov.il)
-- [ ] Investigate the current API, document it in `docs/sources/nadlan.md`.
+### Phase 3 — Transactions (blocked: needs permission or FOI data)
+- [x] Investigate the current API, document it in `docs/sources/nadlan.md` (ToS forbid it).
+- [x] Draft the permission request and the FOI request (`docs/requests/`).
+- [ ] Owner sends both requests; track the answers here.
 - [ ] Fetcher per city and date range, with throttling, retries and raw caching.
 - [ ] Pilot on 3–5 cities, check how far back the data really goes.
 - [ ] Backfill all cities from 2000 (or the earliest available year).
@@ -258,7 +288,9 @@ Cleaning rules (applied before any statistic):
 
 ## 9. Open questions (for the project owner)
 
-All Phase 0 questions are answered (see section 2). New questions go here.
+- Which CBS city-level table to use for average prices by city (CBS publishes average
+  dwelling prices for selected large cities, quarterly, in Excel). To be checked next.
+- Answers to the two data requests (`docs/requests/`).
 
 ## 10. Risks
 
@@ -286,3 +318,17 @@ All Phase 0 questions are answered (see section 2). New questions go here.
   The `index_tweaks` migration timed out again on the Supabase confirmation prompt, so
   it was split: the index creation is applied, the index drop is deferred. Merged the
   branch into `main` for a first production deployment on Vercel.
+- **2026-10-30 (5)** — Owner switched the environment to Custom network access. Verified
+  that nadlan.gov.il, the CBS price-index API and the data.gov.il CKAN API all return
+  data, and that the production website is public. Found the data.gov.il datasets
+  `citiesandsettelments` and `localities-in-israel` for Phase 1. Next: Phase 3 nadlan API
+  investigation or Phase 1 localities, per owner choice.
+- **2026-10-30 (6)** — Owner chose Phase 1 then Phase 3, all localities, load now, mixed
+  pilot cities, Supabase Storage for raw data. Phase 1 code and tests added; `localities`
+  loaded (1,484 rows, 82 cities). Aliases wait for `DATABASE_URL`; `http` extension drop
+  is pending (MCP confirmation timed out). Next: Phase 3 nadlan API investigation.
+- **2026-10-30 (7)** — Phase 3 investigation: nadlan.gov.il Terms of Use forbid automated
+  collection and API use without permission, so the plan changed (owner chose two tracks).
+  Documented in `docs/sources/nadlan.md`, drafted a permission letter and an FOI request,
+  added the CBS index fetcher with tests. Next: CBS average prices by city, then the
+  website on CBS data; load data once `DATABASE_URL` is in the environment.
