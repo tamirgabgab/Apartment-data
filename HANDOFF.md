@@ -42,11 +42,12 @@ the README.
   - Migration `index_tweaks` (`supabase/migrations/20261030000100_index_tweaks.sql`)
     is **not applied yet**: the Supabase server asked for a confirmation (it contains a
     `drop index`) and it timed out. Apply it in the next session.
-- **Vercel:** project not created yet. The Vercel MCP connection lacks access to the
-  `tamirgabgab` scope (team id `team_ZhDyYoJQ7ch1tCHoRn41zIrH`, Hobby plan); the owner
-  needs to approve a consent link (`authorize_team_access`), then create the project
-  with `create_git_project` (repo `tamirgabgab/Apartment-data`, root directory `web`).
-  Production deploys from `main`, so the public link exists only after merging to `main`.
+- **Vercel:** project `apartment-data` (id `prj_859ty9pe0LsMUupyS13M2bnI4U9C`, team
+  `team_ZhDyYoJQ7ch1tCHoRn41zIrH`, Hobby plan), linked to `tamirgabgab/Apartment-data`,
+  root directory `web`, no deployment yet. Production deploys from `main`, so the public
+  link exists only after merging to `main`. Deployment protection is the default
+  (`all_except_custom_domains`); after the first production deploy, verify the
+  production URL opens without a Vercel login, and relax protection if it does not.
 - **Network:** the session network still blocks `www.nadlan.gov.il`, `api.cbs.gov.il`,
   `data.gov.il`, `www.cbs.gov.il`, `www.yad2.co.il`, `www.madlan.co.il` (proxy 403 on
   CONNECT). The owner chose to add them under Allowed domains
@@ -207,7 +208,7 @@ Cleaning rules (applied before any statistic):
 - [x] CI workflow (lint + tests).
 - [x] Create the Supabase project and apply the initial schema.
 - [ ] Apply the `index_tweaks` migration.
-- [ ] Create the Vercel project (after the owner approves Vercel access).
+- [x] Create the Vercel project and link it to the repository.
 - [ ] Add `DATABASE_URL` as a GitHub repository secret.
 - [ ] Merge to `main`, get the production URL, put it in `README.md`.
 
@@ -276,3 +277,5 @@ All Phase 0 questions are answered (see section 2). New questions go here.
   applied the initial schema. Pending: `index_tweaks` migration, Vercel access approval
   and project, `DATABASE_URL` secret, network allow-list. Next: finish Phase 0, then
   Phase 1 (CBS localities).
+- **2026-10-30 (4)** — Owner approved Vercel access; Vercel project created and linked.
+  The `index_tweaks` migration timed out again on the Supabase confirmation prompt.
