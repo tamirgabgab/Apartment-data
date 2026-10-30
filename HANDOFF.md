@@ -72,9 +72,18 @@ the README.
     `DATABASE_URL` (Supabase session pooler string) for loading, and
     `SUPABASE_SERVICE_ROLE_KEY` for raw-response uploads to Supabase Storage.
   - The same two as GitHub repository secrets for the scheduled jobs.
-- **Raw nadlan responses** go to a private Supabase Storage bucket (owner decision).
-- **Phase 3 pilot cities** (owner decision): Tel Aviv-Yafo, Jerusalem, Haifa, Beer Sheva,
-  Sderot.
+- **nadlan.gov.il is blocked by its Terms of Use** (see `docs/sources/nadlan.md`): they
+  forbid scripts, bots and API use without explicit permission, and any non-personal use
+  needs written approval; the deals API is behind reCAPTCHA Enterprise. Nothing is fetched
+  from it. Owner decision: two tracks in parallel:
+  1. Build the site now on official CBS data (Phase 2).
+  2. Request deal data: drafts in `docs/requests/permission-nadlan.md` (Survey of Israel)
+     and `docs/requests/foi-tax-authority.md` (FOI request). The owner sends them.
+- **Phase 2:** `python -m apartment_data.sources.cbs_index [--load]` fetches the national
+  and six district housing price indices and the CPI (1,928 monthly values) as published,
+  with their base. Not loaded yet (needs `DATABASE_URL`). District indices start 2017-10.
+- If deal data arrives later: raw responses go to a private Supabase Storage bucket, and the
+  pilot cities are Tel Aviv-Yafo, Jerusalem, Haifa, Beer Sheva, Sderot (owner decisions).
 
 ---
 
@@ -240,11 +249,14 @@ Cleaning rules (applied before any statistic):
 - [ ] Load `locality_aliases` into Supabase (needs `DATABASE_URL`).
 
 ### Phase 2 — CBS series
-- [ ] Housing price index (national + districts) and CPI into `official_indices`.
+- [x] Housing price index (national + districts) and CPI fetcher (`sources/cbs_index.py`).
+- [ ] Load them into `official_indices` (needs `DATABASE_URL`).
 - [ ] CBS average prices by city for validation.
 
-### Phase 3 — Transactions (nadlan.gov.il)
-- [ ] Investigate the current API, document it in `docs/sources/nadlan.md`.
+### Phase 3 — Transactions (blocked: needs permission or FOI data)
+- [x] Investigate the current API, document it in `docs/sources/nadlan.md` (ToS forbid it).
+- [x] Draft the permission request and the FOI request (`docs/requests/`).
+- [ ] Owner sends both requests; track the answers here.
 - [ ] Fetcher per city and date range, with throttling, retries and raw caching.
 - [ ] Pilot on 3–5 cities, check how far back the data really goes.
 - [ ] Backfill all cities from 2000 (or the earliest available year).
@@ -276,7 +288,9 @@ Cleaning rules (applied before any statistic):
 
 ## 9. Open questions (for the project owner)
 
-All Phase 0 questions are answered (see section 2). New questions go here.
+- Which CBS city-level table to use for average prices by city (CBS publishes average
+  dwelling prices for selected large cities, quarterly, in Excel). To be checked next.
+- Answers to the two data requests (`docs/requests/`).
 
 ## 10. Risks
 
@@ -313,3 +327,8 @@ All Phase 0 questions are answered (see section 2). New questions go here.
   pilot cities, Supabase Storage for raw data. Phase 1 code and tests added; `localities`
   loaded (1,484 rows, 82 cities). Aliases wait for `DATABASE_URL`; `http` extension drop
   is pending (MCP confirmation timed out). Next: Phase 3 nadlan API investigation.
+- **2026-10-30 (7)** — Phase 3 investigation: nadlan.gov.il Terms of Use forbid automated
+  collection and API use without permission, so the plan changed (owner chose two tracks).
+  Documented in `docs/sources/nadlan.md`, drafted a permission letter and an FOI request,
+  added the CBS index fetcher with tests. Next: CBS average prices by city, then the
+  website on CBS data; load data once `DATABASE_URL` is in the environment.
