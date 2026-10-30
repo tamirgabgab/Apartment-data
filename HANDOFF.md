@@ -82,6 +82,24 @@ the README.
 - **Phase 2:** `python -m apartment_data.sources.cbs_index [--load]` fetches the national
   and six district housing price indices and the CPI (1,928 monthly values) as published,
   with their base (loaded). District indices start 2017-10.
+- **CBS average prices (Phase 2b):** `python -m apartment_data.sources.cbs_tables
+  [--backfill] [--load]` parses every edition of Price Statistics Monthly Table 2.2
+  (average sale prices + number of deals) and Table 4.9 (average rent + sampling error),
+  English Excel files at `www.cbs.gov.il/he/publications/Madad/DocLib/{YYYY}/price{MM}aa/
+  aa2_2_e.xlsx|xls` and `.../price{MM}a/a4_9_e.*`. Newest edition wins per key. Table
+  `cbs_average_prices`: national, 6 districts, 18 big cities (Herzliya and Hadera from
+  2021), 2017 Q1 onward, by rooms group. Monthly runs read the last 12 editions; a backfill
+  walks all editions since 2018-12 (about 10 minutes).
+- **New dwellings index (70000)** is fetched from 2019-01 only: the CBS API returns 500 for
+  any range touching 2018 for that series.
+- **Website (Phase 6):** static site in `web/` (ECharts 5.5.1 from jsdelivr): map with a
+  quarter slider and play button (districts choropleth + city bubbles), ranking table,
+  line chart comparing up to 8 places with the CBS index overlay in % mode, heatmap
+  (place × quarter). Options: sale / rent, rooms group, nominal / real (CPI-chained, in
+  latest-quarter shekels), price / % change since a chosen quarter. Data:
+  `web/data/data.json` (from `python -m apartment_data.export.web`, ~125 KB) and
+  `web/data/districts.geojson` (geoBoundaries ISR ADM1, public domain). The workflow
+  exports and commits `data.json` after each monthly load, which redeploys Vercel.
 - If deal data arrives later: raw responses go to a private Supabase Storage bucket, and the
   pilot cities are Tel Aviv-Yafo, Jerusalem, Haifa, Beer Sheva, Sderot (owner decisions).
 
@@ -251,7 +269,10 @@ Cleaning rules (applied before any statistic):
 ### Phase 2 — CBS series
 - [x] Housing price index (national + districts) and CPI fetcher (`sources/cbs_index.py`).
 - [x] Load them into `official_indices`.
-- [ ] CBS average prices by city for validation.
+- [x] CBS average prices and rents by district and big city (`cbs_tables`).
+- [x] New dwellings price index (from 2019).
+- [ ] Average prices by city before 2017 (search older CBS publications).
+- [ ] Bank of Israel mortgage rates (owner asked; needs the BOI host in Allowed domains).
 
 ### Phase 3 — Transactions (blocked: needs permission or FOI data)
 - [x] Investigate the current API, document it in `docs/sources/nadlan.md` (ToS forbid it).
@@ -269,14 +290,14 @@ Cleaning rules (applied before any statistic):
 
 ### Phase 5 — Analytics
 - [ ] `city_price_stats` per quarter and segment, rolling medians, flags.
-- [ ] CPI-deflated prices.
+- [x] CPI-deflated prices (CPI chained across bases in the export).
 
 ### Phase 6 — Website
-- [ ] JSON export job.
-- [ ] Interactive site (section 7), deploy to Vercel, add the link to `README.md`.
+- [x] JSON export job.
+- [x] Interactive site on CBS data: map + time slider, line chart, heatmap, ranking.
 
 ### Phase 7 — Automation
-- [ ] GitHub Actions cron: weekly deals update, monthly CBS update, then re-export.
+- [x] GitHub Actions monthly CBS update and website re-export (`update-data.yml`).
 - [ ] Alerts when a source fails or returns an unexpected schema.
 
 ### Phase 8 — Optional
@@ -288,8 +309,6 @@ Cleaning rules (applied before any statistic):
 
 ## 9. Open questions (for the project owner)
 
-- Which CBS city-level table to use for average prices by city (CBS publishes average
-  dwelling prices for selected large cities, quarterly, in Excel). To be checked next.
 - Answers to the two data requests (`docs/requests/`).
 
 ## 10. Risks
@@ -336,3 +355,9 @@ Cleaning rules (applied before any statistic):
   update workflow) and PR #2 (hide URL fragments in DB errors, after a password fragment
   leaked to a public log; log deleted, password reset). The workflow loaded localities,
   aliases and CBS indices. Next: CBS average prices by city, then the website on CBS data.
+- **2026-10-30 (9)** — Owner asked for prices over time per region, a map with a time
+  slider, line chart, heatmap, rooms filter, real prices, % change, rent, new dwellings
+  index, mortgage rates and pre-2017 history. Added CBS tables 2.2 / 4.9 parser and table
+  (PR #3), API workaround for series 70000 (PR #4), locality coordinates (PR #5), the JSON
+  export and the website with monthly auto-publish. Owner rule: merge to `main` after each
+  step when CI is green. Next: mortgage rates (network allow-list), pre-2017 city history.
