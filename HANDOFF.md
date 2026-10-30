@@ -61,17 +61,17 @@ the README.
 - **Phase 1:** `python -m apartment_data.reference.localities [--load]` builds
   `localities` (newest CBS file, 1,484 localities, 82 cities) and `locality_aliases`
   (2,864 normalized spellings, ambiguous ones skipped) and writes CSVs to `data/reference/`.
-  - `localities` is loaded in Supabase (checksum matched the Python output). It was loaded
-    once through the Postgres `http` extension, which fetched the CBS file directly.
-  - `locality_aliases` is **not loaded yet**: too large to paste through the MCP. Run the
-    command with `--load` once `DATABASE_URL` is available.
-  - Cleanup pending: `drop extension if exists http;` hit the Supabase MCP confirmation
-    prompt and timed out. Run it in the SQL Editor or confirm it in a later session.
-- **Secrets still needed:**
-  - In the cloud environment (environment variables, new session picks them up):
-    `DATABASE_URL` (Supabase session pooler string) for loading, and
-    `SUPABASE_SERVICE_ROLE_KEY` for raw-response uploads to Supabase Storage.
-  - The same two as GitHub repository secrets for the scheduled jobs.
+- **Loading runs in GitHub Actions**, not in the cloud session: the session network only
+  allows HTTPS through a proxy, so it cannot open Postgres connections. The workflow
+  `.github/workflows/update-data.yml` (manual dispatch + monthly on the 20th) loads
+  localities, aliases and CBS indices using the `DATABASE_URL` repository secret
+  (Supabase session pooler string). Dispatch it with the GitHub MCP `actions_run_trigger`
+  on `main`. Loaded 2026-10-30: 1,484 localities, 2,864 aliases, 1,928 index values.
+- **Security note:** a malformed `DATABASE_URL` once printed part of the password into a
+  public Actions log (logs deleted, password reset, `connect()` now hides the URL). Keep the
+  database password to letters and digits.
+- Cleanup pending: `drop extension if exists http;` (installed for a one-off load; the
+  Supabase MCP confirmation prompt timed out). Run it in the SQL Editor.
 - **nadlan.gov.il is blocked by its Terms of Use** (see `docs/sources/nadlan.md`): they
   forbid scripts, bots and API use without explicit permission, and any non-personal use
   needs written approval; the deals API is behind reCAPTCHA Enterprise. Nothing is fetched
@@ -81,7 +81,7 @@ the README.
      and `docs/requests/foi-tax-authority.md` (FOI request). The owner sends them.
 - **Phase 2:** `python -m apartment_data.sources.cbs_index [--load]` fetches the national
   and six district housing price indices and the CPI (1,928 monthly values) as published,
-  with their base. Not loaded yet (needs `DATABASE_URL`). District indices start 2017-10.
+  with their base (loaded). District indices start 2017-10.
 - If deal data arrives later: raw responses go to a private Supabase Storage bucket, and the
   pilot cities are Tel Aviv-Yafo, Jerusalem, Haifa, Beer Sheva, Sderot (owner decisions).
 
@@ -239,18 +239,18 @@ Cleaning rules (applied before any statistic):
 - [x] Apply the `index_tweaks` migration.
 - [ ] Drop the redundant partial index `deals_valid_locality_date_idx` (deferred).
 - [x] Create the Vercel project and link it to the repository.
-- [ ] Add `DATABASE_URL` as a GitHub repository secret.
+- [x] Add `DATABASE_URL` as a GitHub repository secret.
 - [x] Merge to `main`, get the production URL, put it in `README.md`.
 - [x] Confirm https://apartment-data.vercel.app opens without a Vercel login.
 
 ### Phase 1 — Reference data
 - [x] Ingest the CBS localities file into `localities`, mark `is_city`.
 - [x] Build `locality_aliases` (code done).
-- [ ] Load `locality_aliases` into Supabase (needs `DATABASE_URL`).
+- [x] Load `locality_aliases` into Supabase.
 
 ### Phase 2 — CBS series
 - [x] Housing price index (national + districts) and CPI fetcher (`sources/cbs_index.py`).
-- [ ] Load them into `official_indices` (needs `DATABASE_URL`).
+- [x] Load them into `official_indices`.
 - [ ] CBS average prices by city for validation.
 
 ### Phase 3 — Transactions (blocked: needs permission or FOI data)
@@ -332,3 +332,7 @@ Cleaning rules (applied before any statistic):
   Documented in `docs/sources/nadlan.md`, drafted a permission letter and an FOI request,
   added the CBS index fetcher with tests. Next: CBS average prices by city, then the
   website on CBS data; load data once `DATABASE_URL` is in the environment.
+- **2026-10-30 (8)** — Owner added the `DATABASE_URL` secret. Merged PR #1 (Phases 1–2 code,
+  update workflow) and PR #2 (hide URL fragments in DB errors, after a password fragment
+  leaked to a public log; log deleted, password reset). The workflow loaded localities,
+  aliases and CBS indices. Next: CBS average prices by city, then the website on CBS data.

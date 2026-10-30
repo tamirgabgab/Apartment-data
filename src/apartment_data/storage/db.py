@@ -8,6 +8,7 @@ import psycopg
 from apartment_data.config import Settings
 from apartment_data.reference.localities import Locality
 from apartment_data.sources.cbs_index import IndexValue
+from apartment_data.sources.cbs_tables import AveragePrice
 
 
 class DatabaseConfigError(RuntimeError):
@@ -63,6 +64,26 @@ def upsert_official_indices(conn: psycopg.Connection, values: Iterable[IndexValu
                 value = excluded.value,
                 base_period = excluded.base_period,
                 fetched_at = now()
+            """,
+            [astuple(v) for v in values],
+        )
+
+
+def upsert_average_prices(conn: psycopg.Connection, values: Iterable[AveragePrice]) -> None:
+    """Insert or update CBS average prices, never replacing a value from a newer edition."""
+    with conn.cursor() as cur:
+        cur.executemany(
+            """
+            insert into public.cbs_average_prices (kind, geo_level, geo_code, period, rooms,
+                avg_price, n_deals, sampling_error, edition)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            on conflict (kind, geo_level, geo_code, period, rooms) do update set
+                avg_price = excluded.avg_price,
+                n_deals = excluded.n_deals,
+                sampling_error = excluded.sampling_error,
+                edition = excluded.edition,
+                fetched_at = now()
+            where excluded.edition >= cbs_average_prices.edition
             """,
             [astuple(v) for v in values],
         )
