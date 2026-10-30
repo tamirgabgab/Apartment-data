@@ -51,11 +51,13 @@ the README.
   preview deployments. Deployment protection is the default (`all_except_custom_domains`);
   the session network cannot reach `vercel.app`, so the owner has to confirm the
   production URL opens without a Vercel login. Relax protection if it does not.
-- **Network:** the session network still blocks `www.nadlan.gov.il`, `api.cbs.gov.il`,
-  `data.gov.il`, `www.cbs.gov.il`, `www.yad2.co.il`, `www.madlan.co.il` (proxy 403 on
-  CONNECT). The owner chose to add them under Allowed domains
-  (https://code.claude.com/docs/en/cloud-environments#network-access); a new session
-  may be needed for the change to take effect. GitHub Actions is not affected.
+- **Network:** the environment uses Custom network access with the source hosts in
+  Allowed domains. Verified working on 2026-10-30: `www.nadlan.gov.il` (site HTML),
+  `api.cbs.gov.il` (price-index API returns JSON; the bare root does not answer, that is
+  normal), `data.gov.il` (CKAN API returns JSON; the bare root returns a WAF 403, that is
+  normal), `www.cbs.gov.il`, `apartment-data.vercel.app`. Yad2 / Madlan are not allowed
+  on purpose (deferred). GitHub Actions is not affected by these settings.
+- **Website:** https://apartment-data.vercel.app is public (no Vercel login).
 - **Secrets still needed** (GitHub repository secrets): `DATABASE_URL` (Supabase
   session pooler connection string) for the scheduled jobs.
 
@@ -206,7 +208,7 @@ Cleaning rules (applied before any statistic):
 
 ### Phase 0 — Setup
 - [x] Answer the open questions (section 9).
-- [ ] Allow the source hosts in the environment network settings (section 3).
+- [x] Allow the source hosts in the environment network settings (section 3).
 - [x] Python project skeleton: `pyproject.toml`, `ruff`, `pytest`, `.gitignore`, src layout.
 - [x] CI workflow (lint + tests).
 - [x] Create the Supabase project and apply the initial schema.
@@ -215,7 +217,7 @@ Cleaning rules (applied before any statistic):
 - [x] Create the Vercel project and link it to the repository.
 - [ ] Add `DATABASE_URL` as a GitHub repository secret.
 - [x] Merge to `main`, get the production URL, put it in `README.md`.
-- [ ] Owner confirms https://apartment-data.vercel.app opens without a Vercel login.
+- [x] Confirm https://apartment-data.vercel.app opens without a Vercel login.
 
 ### Phase 1 — Reference data
 - [ ] Ingest the CBS localities file into `localities`, mark `is_city`.
@@ -286,3 +288,8 @@ All Phase 0 questions are answered (see section 2). New questions go here.
   The `index_tweaks` migration timed out again on the Supabase confirmation prompt, so
   it was split: the index creation is applied, the index drop is deferred. Merged the
   branch into `main` for a first production deployment on Vercel.
+- **2026-10-30 (5)** — Owner switched the environment to Custom network access. Verified
+  that nadlan.gov.il, the CBS price-index API and the data.gov.il CKAN API all return
+  data, and that the production website is public. Found the data.gov.il datasets
+  `citiesandsettelments` and `localities-in-israel` for Phase 1. Next: Phase 3 nadlan API
+  investigation or Phase 1 localities, per owner choice.
