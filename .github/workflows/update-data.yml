@@ -6,8 +6,12 @@ on:
       job:
         description: Which data to update
         type: choice
-        options: [all, localities, cbs-index]
+        options: [all, localities, cbs-index, cbs-tables]
         default: all
+      backfill:
+        description: Walk every CBS table edition (slow, about 10 minutes)
+        type: boolean
+        default: false
   schedule:
     # Monthly, after the CBS publishes the CPI (15th) and the housing price index.
     - cron: "17 3 20 * *"
@@ -17,7 +21,7 @@ concurrency: update-data
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
@@ -39,3 +43,6 @@ jobs:
       - name: CBS price indices
         if: github.event_name == 'schedule' || inputs.job == 'all' || inputs.job == 'cbs-index'
         run: python -m apartment_data.sources.cbs_index --load
+      - name: CBS average prices and rents
+        if: github.event_name == 'schedule' || inputs.job == 'all' || inputs.job == 'cbs-tables'
+        run: python -m apartment_data.sources.cbs_tables --load ${{ inputs.backfill && '--backfill' || '' }}
