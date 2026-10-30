@@ -82,7 +82,7 @@ def test_old_editions_without_sections_are_districts_and_unknown_places_are_skip
         ]
     )
     unknown = set()
-    values = parse_table(rows, TABLES["sale"], "2020-01", unknown)
+    values = parse_table(rows, TABLES["sale"], "2026-09", unknown)
 
     assert {(v.geo_level, v.geo_code) for v in values} == {("district", 1), ("district", 4)}
     assert unknown == {"Atlantis"}
@@ -90,21 +90,95 @@ def test_old_editions_without_sections_are_districts_and_unknown_places_are_skip
 
 def test_parse_rent_table_keeps_sampling_error_and_nis_prices():
     rows = [
-        ["Districts\nand no.\nof rooms", "2025"],
-        [None, "I-III"],
-        [None, "Average\nprice ", "Sampling\nerror"],
-        ["Total", 4817.4, 13.6],
-        ["4.5 +", 6782.2, 46.8],
+        ["Districts\nand no.\nof rooms", "2024", None, None, None, "2025"],
+        [None, "X-XII", None, "Annual\naverage", None, "I-III"],
+        [None, "Average\nprice ", "Sampling\nerror"] * 1
+        + ["x", "x", "Average\nprice ", "Sampling"],
+        ["Total", 4700.0, 12.0, 4600.0, 11.0, 4817.4, 13.6],
+        ["4.5 +", 6700.0, 40.0, 6600.0, 41.0, 6782.2, 46.8],
     ]
     values = parse_table(rows, TABLES["rent"], "2025-09")
-    assert [(v.rooms, v.avg_price, v.n_deals, v.sampling_error) for v in values] == [
+    q1 = [v for v in values if v.period == date(2025, 1, 1)]
+    assert [(v.rooms, v.avg_price, v.n_deals, v.sampling_error) for v in q1] == [
         ("all", 4817.4, None, 13.6),
         ("4.5-6", 6782.2, None, 46.8),
     ]
 
 
+def _periods(years, quarters, kind="sale", edition="2026-09"):
+    width = len(quarters)
+    rows = [
+        ["Districts"] + years + [None] * (width - len(years)),
+        [None] + quarters,
+        [None] + ["Average price", "No. of transactions"] * (width // 2),
+        ["Total"] + [float(i + 1) for i in range(width)],
+    ]
+    values = parse_table(rows, TABLES[kind], edition)
+    return [(v.period.isoformat()[:7], v.avg_price) for v in values]
+
+
+def test_misplaced_year_cells_do_not_shift_quarters():
+    # Edition 2026-09 prints '2025' above IV-VI instead of I-III.
+    quarters = ["X-XII", None, "Annual average", None, "I-III", None, "IV-VI", None]
+    years = ["2024", None, None, None, None, None, "2025"]
+    assert _periods(years, quarters) == [
+        ("2024-10", 1000.0),
+        ("2025-01", 5000.0),
+        ("2025-04", 7000.0),
+    ]
+
+
+def test_a_duplicated_quarter_label_does_not_start_a_new_year():
+    # Edition 2020-10 labels the fourth quarter of 2019 'VII-IX' a second time.
+    quarters = ["Annual average", None, "I-III", None, "VII-IX", None, "VII-IX", None]
+    quarters += ["Annual average", None, "I-III", None]
+    years = ["2018", None, "2019"] + [None] * 7 + ["2020"]
+    got = _periods(years, quarters, edition="2020-10")
+    assert got == [
+        ("2019-01", 3000.0),
+        ("2019-04", 5000.0),
+        ("2019-07", 7000.0),
+        ("2020-01", 11000.0),
+    ]
+
+
+def test_a_missing_first_year_label_is_inferred_from_a_later_one():
+    # Edition 2021-01 of the rent table prints only '2020', above the second run.
+    quarters = ["X-XII", None, "Annual average", None, "I-III", None]
+    years = [None, None, None, None, "2020"]
+    assert _periods(years, quarters, edition="2021-01") == [
+        ("2019-10", 1000.0),
+        ("2020-01", 5000.0),
+    ]
+
+
+def test_mislabeled_measure_row_still_reads_price_first():
+    rows = [
+        ["Districts", "2019", None, None, None, "2020"],
+        [None, "X-XII", None, "Annual average", None, "I-III"],
+        [None, "Sampling errors", "No. of transactions"] * 2 + [None],
+        ["Total", 3864.2, 13.0, 3805.4, 12.0, 3900.7, 13.0],
+    ]
+    values = parse_table(rows, TABLES["rent"], "2020-09")
+    assert [(v.period.month, v.avg_price, v.sampling_error) for v in values] == [
+        (10, 3864.2, 13.0),
+        (1, 3900.7, 13.0),
+    ]
+
+
+def test_an_edition_cannot_hold_quarters_from_its_own_future():
+    quarters = ["X-XII", None, "Annual average", None, "I-III", None]
+    with pytest.raises(ValueError, match="not before the edition date"):
+        _periods(["2025"], quarters, edition="2025-12")
+
+
 def _value(edition, price):
     return AveragePrice("sale", "city", 70, date(2026, 1, 1), "all", price, 1, None, edition)
+
+
+def test_merge_editions_never_lets_a_missing_price_win():
+    merged = merge_editions([_value("2026-08", 1.0), _value("2026-09", None)])
+    assert [(v.edition, v.avg_price) for v in merged] == [("2026-08", 1.0)]
 
 
 def test_merge_editions_keeps_newest():

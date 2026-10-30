@@ -29,11 +29,14 @@ const ROOM_LABELS = {
   "5.5-6": "5.5–6 חדרים",
 };
 
+const SMOOTH_QUARTERS = 4;
+
 const state = {
-  kind: "sale",
+  kind: "sale", // 'sale', 'rent' or 'ratio' (price / yearly rent)
   rooms: "all",
   real: "nominal",
   mode: "price",
+  smooth: false,
   base: 0,
   t: 0,
   tab: "map",
@@ -86,13 +89,21 @@ function formatValue(v) {
   if (v == null || Number.isNaN(v)) return "—";
   if (state.mode === "change") return `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
   if (state.kind === "sale") return `${nf2.format(v / 1e6)} מיליון ₪`;
+  if (state.kind === "ratio") return `${v.toFixed(1)} שנים`;
   return `${nf0.format(v)} ₪`;
 }
 
 function formatAxis(v) {
   if (state.mode === "change") return `${Math.round(v)}%`;
   if (state.kind === "sale") return `${(v / 1e6).toFixed(1)}M`;
+  if (state.kind === "ratio") return `${Math.round(v)}`;
   return nf0.format(v);
+}
+
+function valueName() {
+  if (state.kind === "sale") return "מחיר ממוצע";
+  if (state.kind === "rent") return "שכר דירה ממוצע";
+  return "שנות שכירות";
 }
 
 function formatPercent(v) {
@@ -100,19 +111,40 @@ function formatPercent(v) {
   return `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
 }
 
-function cell(placeId) {
-  return DATA.series[state.kind]?.[placeId]?.[state.rooms];
+function cell(placeId, kind = state.kind) {
+  return DATA.series[kind]?.[placeId]?.[state.rooms];
 }
 
-// Price in NIS at period i, nominal or real, before the change transform.
-function price(placeId, i) {
-  const raw = cell(placeId)?.price?.[i];
+function rawPrice(kind, placeId, i) {
+  const raw = cell(placeId, kind)?.price?.[i];
   if (raw == null) return null;
   if (state.real === "real") {
     const f = DATA.real_factor[i];
     return f == null ? null : raw * f;
   }
   return raw;
+}
+
+// The level shown before the change transform: a price in NIS (nominal or real), or for
+// 'ratio' the years of rent a dwelling costs (sale price / yearly rent).
+function level(placeId, i) {
+  if (state.kind !== "ratio") return rawPrice(state.kind, placeId, i);
+  const sale = rawPrice("sale", placeId, i);
+  const rent = rawPrice("rent", placeId, i);
+  return sale == null || rent == null || rent === 0 ? null : sale / (rent * 12);
+}
+
+// Level at period i, optionally as the mean of the last SMOOTH_QUARTERS quarters.
+function price(placeId, i) {
+  if (!state.smooth) return level(placeId, i);
+  if (i < SMOOTH_QUARTERS - 1) return null;
+  let sum = 0;
+  for (let k = i - SMOOTH_QUARTERS + 1; k <= i; k++) {
+    const v = level(placeId, k);
+    if (v == null) return null;
+    sum += v;
+  }
+  return sum / SMOOTH_QUARTERS;
 }
 
 function changeSince(placeId, i, base) {
@@ -128,11 +160,17 @@ function value(placeId, i) {
 }
 
 function deals(placeId, i) {
-  return cell(placeId)?.deals?.[i] ?? null;
+  return state.kind === "sale" ? (cell(placeId)?.deals?.[i] ?? null) : null;
 }
 
 function placesWithData() {
-  return DATA.places.filter((p) => cell(p.id)?.price?.some((v) => v != null));
+  return DATA.places.filter((p) => DATA.periods.some((_, i) => price(p.id, i) != null));
+}
+
+function roomsFor(kind) {
+  if (kind !== "ratio") return DATA.rooms[kind] || ["all"];
+  const rent = new Set(DATA.rooms.rent || []);
+  return (DATA.rooms.sale || []).filter((r) => rent.has(r));
 }
 
 // One fixed colour scale over every quarter, so colours stay comparable while time moves.
@@ -187,7 +225,7 @@ function setSegment(key, val) {
 
 function fillRooms() {
   const select = $("#rooms");
-  const rooms = DATA.rooms[state.kind] || ["all"];
+  const rooms = roomsFor(state.kind);
   if (!rooms.includes(state.rooms)) state.rooms = "all";
   select.innerHTML = rooms
     .map((r) => `<option value="${r}"${r === state.rooms ? " selected" : ""}>${ROOM_LABELS[r] || r}</option>`)
@@ -209,10 +247,16 @@ function bindControls() {
       if (!btn) return;
       setSegment(group.dataset.key, btn.dataset.value);
       if (group.dataset.key === "kind") fillRooms();
-      $("#base-control").hidden = state.mode !== "change";
+      syncControls();
       render();
     });
   });
+  $("#smooth").addEventListener("change", (e) => {
+    state.smooth = e.target.checked;
+    render();
+  });
+  $("#share").addEventListener("click", shareLink);
+  $("#download").addEventListener("click", downloadCsv);
   $("#rooms").addEventListener("change", (e) => {
     state.rooms = e.target.value;
     render();
@@ -230,6 +274,14 @@ function bindControls() {
   document.querySelectorAll(".tabs button").forEach((btn) => {
     btn.addEventListener("click", () => showTab(btn.dataset.tab));
   });
+}
+
+// Show only the controls that matter for the current choices.
+function syncControls() {
+  $("#base-control").hidden = state.mode !== "change";
+  // Real prices cancel out in a ratio of two prices.
+  $("#real-control").hidden = state.kind === "ratio";
+  $("#smooth").checked = state.smooth;
 }
 
 function showTab(tab) {
@@ -362,8 +414,8 @@ function renderRanking() {
     .sort((a, b) => (b.v ?? -Infinity) - (a.v ?? -Infinity));
   $("#rank-title").textContent = `דירוג, ${quarterLabel(DATA.periods[i])}`;
   $("#rank-value-head").textContent =
-    state.mode === "change" ? `שינוי מ${shortQuarter(DATA.periods[state.base])}` : state.kind === "sale" ? "מחיר ממוצע" : "שכר דירה ממוצע";
-  $("#rank-change-head").textContent = state.mode === "change" ? "מחיר" : `שינוי מ${shortQuarter(DATA.periods[state.base])}`;
+    state.mode === "change" ? `שינוי מ${shortQuarter(DATA.periods[state.base])}` : valueName();
+  $("#rank-change-head").textContent = state.mode === "change" ? valueName() : `שינוי מ${shortQuarter(DATA.periods[state.base])}`;
   $("#rank-deals-head").hidden = state.kind !== "sale";
   $("#rank-body").innerHTML = rows
     .map(({ p, v, ch, d }) => {
@@ -440,7 +492,7 @@ function renderPicker() {
 // The CBS quality-adjusted index, as % change since the base quarter (real when prices are).
 function indexLine() {
   const idx = DATA.indices["40010"];
-  if (!idx || state.mode !== "change") return null;
+  if (!idx || state.mode !== "change" || state.kind !== "sale") return null;
   const adjusted = idx.values.map((v, i) => {
     if (v == null || state.real !== "real") return v;
     const f = DATA.real_factor[i];
@@ -580,9 +632,96 @@ function renderHeat() {
   );
 }
 
+// ---------- share link + CSV ----------
+
+// The view is kept in the URL hash, so a copied link opens the same view.
+function writeHash() {
+  const params = new URLSearchParams({
+    kind: state.kind,
+    rooms: state.rooms,
+    real: state.real,
+    mode: state.mode,
+    smooth: state.smooth ? "1" : "0",
+    base: DATA.periods[state.base],
+    tab: state.tab,
+    sel: state.selected.join(","),
+  });
+  // Without an explicit quarter the link follows the newest data.
+  if (state.t !== DATA.periods.length - 1) params.set("t", DATA.periods[state.t]);
+  history.replaceState(null, "", `#${params}`);
+}
+
+function readHash() {
+  const params = new URLSearchParams(location.hash.slice(1));
+  const pick = (key, allowed) => (allowed.includes(params.get(key)) ? params.get(key) : null);
+  state.kind = pick("kind", ["sale", "rent", "ratio"]) ?? state.kind;
+  state.real = pick("real", ["nominal", "real"]) ?? state.real;
+  state.mode = pick("mode", ["price", "change"]) ?? state.mode;
+  state.tab = pick("tab", ["map", "line", "heat"]) ?? state.tab;
+  state.smooth = params.get("smooth") === "1";
+  if (params.get("rooms")) state.rooms = params.get("rooms");
+  const base = DATA.periods.indexOf(params.get("base"));
+  if (base >= 0) state.base = base;
+  const t = DATA.periods.indexOf(params.get("t"));
+  if (t >= 0) state.t = t;
+  const sel = (params.get("sel") || "").split(",").filter((id) => PLACES[id]).slice(0, MAX_COMPARE);
+  if (params.has("sel")) {
+    state.selected = [];
+    state.slots = {};
+    for (const id of sel) {
+      state.selected.push(id);
+      slotFor(id);
+    }
+  }
+}
+
+async function shareLink() {
+  writeHash();
+  const button = $("#share");
+  try {
+    await navigator.clipboard.writeText(location.href);
+    button.textContent = "הקישור הועתק ✓";
+  } catch {
+    window.prompt("העתיקו את הקישור:", location.href);
+  }
+  setTimeout(() => (button.textContent = "העתקת קישור לתצוגה"), 2000);
+}
+
+function csvCell(v) {
+  const s = String(v ?? "");
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+// Everything the current options show, one row per place and quarter.
+function downloadCsv() {
+  const header = ["place", "level", "place_code", "quarter", valueName()];
+  if (state.mode === "change") header[4] = `change_since_${DATA.periods[state.base]}_pct`;
+  if (state.kind === "sale") header.push("deals");
+  const lines = [header.map(csvCell).join(",")];
+  for (const p of placesWithData()) {
+    DATA.periods.forEach((period, i) => {
+      const v = value(p.id, i);
+      if (v == null) return;
+      const row = [p.name, p.level, p.code, period, Math.round(v * 100) / 100];
+      if (state.kind === "sale") row.push(deals(p.id, i) ?? "");
+      lines.push(row.map(csvCell).join(","));
+    });
+  }
+  const parts = [state.kind, state.rooms, state.real, state.mode, state.smooth ? "smoothed" : ""];
+  const name = `apartment-prices-${parts.filter(Boolean).join("-")}.csv`;
+  // The BOM makes Excel open the Hebrew names as UTF-8.
+  const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 // ---------- wiring ----------
 
 function render() {
+  writeHash();
   if (state.tab === "map") {
     renderMap();
     renderRanking();
@@ -614,6 +753,7 @@ async function init() {
       slotFor(id);
     }
   }
+  readHash();
 
   const updated = new Date(DATA.generated_at);
   $("#updated").textContent = `עודכן ${updated.toLocaleDateString("he-IL")} · נתונים עד ${quarterLabel(DATA.periods.at(-1))}`;
@@ -627,6 +767,7 @@ async function init() {
   setSegment("mode", state.mode);
   fillRooms();
   fillBase();
+  syncControls();
   bindControls();
 
   charts.map = echarts.init($("#map"));
@@ -635,7 +776,7 @@ async function init() {
   window.addEventListener("resize", () => Object.values(charts).forEach((ch) => ch.resize()));
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
 
-  showTab("map");
+  showTab(state.tab);
 }
 
 document.addEventListener("DOMContentLoaded", () => {

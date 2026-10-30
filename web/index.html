@@ -23,13 +23,14 @@
         <div class="segmented" role="radiogroup" aria-labelledby="kind-label" data-key="kind">
           <button type="button" role="radio" data-value="sale">מחיר דירה</button>
           <button type="button" role="radio" data-value="rent">שכר דירה</button>
+          <button type="button" role="radio" data-value="ratio">יחס מחיר לשכירות</button>
         </div>
       </div>
       <div class="control">
         <label class="control-label" for="rooms">חדרים</label>
         <select id="rooms"></select>
       </div>
-      <div class="control">
+      <div class="control" id="real-control">
         <span class="control-label" id="real-label">מחירים</span>
         <div class="segmented" role="radiogroup" aria-labelledby="real-label" data-key="real">
           <button type="button" role="radio" data-value="nominal">נומינליים</button>
@@ -46,6 +47,14 @@
       <div class="control" id="base-control">
         <label class="control-label" for="base">מאז</label>
         <select id="base"></select>
+      </div>
+      <div class="control">
+        <span class="control-label">מגמה</span>
+        <label class="check"><input type="checkbox" id="smooth"> ממוצע נע של 4 רבעונים</label>
+      </div>
+      <div class="control actions">
+        <button type="button" class="action" id="share">העתקת קישור לתצוגה</button>
+        <button type="button" class="action" id="download">הורדת CSV</button>
       </div>
     </section>
 

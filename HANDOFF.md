@@ -90,6 +90,14 @@ the README.
   `cbs_average_prices`: national, 6 districts, 18 big cities (Herzliya and Hadera from
   2021), 2017 Q1 onward, by rooms group. Monthly runs read the last 12 editions; a backfill
   walks all editions since 2018-12 (about 10 minutes).
+- **CBS table header quirks** (handled in `_column_map`, with regression tests): merged year
+  cells are misplaced in some editions, a quarter label can be duplicated (typo), the first
+  year label can be missing, and the measure row can be mislabeled. Quarters are anchored on
+  the 'Annual average' columns and the first year is voted from all year labels; an edition
+  holding a quarter not before its own date is rejected. A first version without this
+  shifted every Q1 value by a year (fixed 2026-10-30, 1,929 values; `--backfill` now
+  rebuilds the table). Newer editions also revise provisional quarters and, from 2024,
+  recalculated 2022 Q4–2023 without subsidized deals; the newest published value wins.
 - **New dwellings index (70000)** is fetched from 2019-01 only: the CBS API returns 500 for
   any range touching 2018 for that series.
 - **Website (Phase 6):** static site in `web/` (ECharts 5.5.1 from jsdelivr): map with a
@@ -100,6 +108,9 @@ the README.
   `web/data/data.json` (from `python -m apartment_data.export.web`, ~125 KB) and
   `web/data/districts.geojson` (geoBoundaries ISR ADM1, public domain). The workflow
   exports and commits `data.json` after each monthly load, which redeploys Vercel.
+- **Website features (round 2):** price-to-rent ratio (years of rent = sale price / yearly
+  rent, rooms groups common to both tables), 4-quarter moving average toggle, share link
+  (view kept in the URL hash), CSV download of the current view (UTF-8 BOM for Excel).
 - If deal data arrives later: raw responses go to a private Supabase Storage bucket, and the
   pilot cities are Tel Aviv-Yafo, Jerusalem, Haifa, Beer Sheva, Sderot (owner decisions).
 
@@ -361,3 +372,8 @@ Cleaning rules (applied before any statistic):
   (PR #3), API workaround for series 70000 (PR #4), locality coordinates (PR #5), the JSON
   export and the website with monthly auto-publish. Owner rule: merge to `main` after each
   step when CI is green. Next: mortgage rates (network allow-list), pre-2017 city history.
+- **2026-10-30 (10)** — Owner chose: add BOI hosts for mortgage rates, and site features
+  first. Added ratio, smoothing, share link, CSV. Found and fixed a CBS header parsing bug
+  (Q1 values shifted a year) with regression tests and a full rebuild. Pending owner: add
+  `www.boi.org.il` and `edge.boi.org.il` to Allowed domains. Next: mortgage rates,
+  pre-2017 history.

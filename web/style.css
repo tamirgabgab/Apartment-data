@@ -103,6 +103,15 @@ select {
   padding: 6px 10px;
 }
 
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 0.9rem; padding: 6px 0; cursor: pointer; }
+.check input { accent-color: var(--accent); width: 16px; height: 16px; }
+.actions { flex-direction: row; gap: 8px; margin-inline-start: auto; }
+.action {
+  font: inherit; font-size: 0.85rem; color: var(--text-primary); cursor: pointer;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px;
+}
+.action:hover { background: var(--hover); }
+
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
 .tabs button { padding: 8px 16px; border-bottom: 2px solid transparent; color: var(--text-secondary); }
 .tabs button:hover { color: var(--text-primary); }
