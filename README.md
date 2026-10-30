@@ -3,7 +3,7 @@
 Track Israeli apartment prices over time, per city, based on executed transactions
 (Israel Tax Authority deals and CBS / LAMAS data).
 
-**Website:** _coming soon — the link will be added here after the first Vercel deployment._
+**Website:** https://apartment-data.vercel.app (placeholder page for now)
 
 ## Project layout
 

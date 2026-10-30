@@ -46,10 +46,11 @@ the README.
     a later migration, or by hand in the Supabase SQL Editor.
 - **Vercel:** project `apartment-data` (id `prj_859ty9pe0LsMUupyS13M2bnI4U9C`, team
   `team_ZhDyYoJQ7ch1tCHoRn41zIrH`, Hobby plan), linked to `tamirgabgab/Apartment-data`,
-  root directory `web`, no deployment yet. Production deploys from `main`, so the public
-  link exists only after merging to `main`. Deployment protection is the default
-  (`all_except_custom_domains`); after the first production deploy, verify the
-  production URL opens without a Vercel login, and relax protection if it does not.
+  root directory `web`. Production deploys from `main` to
+  **https://apartment-data.vercel.app** (linked in `README.md`); other branches get
+  preview deployments. Deployment protection is the default (`all_except_custom_domains`);
+  the session network cannot reach `vercel.app`, so the owner has to confirm the
+  production URL opens without a Vercel login. Relax protection if it does not.
 - **Network:** the session network still blocks `www.nadlan.gov.il`, `api.cbs.gov.il`,
   `data.gov.il`, `www.cbs.gov.il`, `www.yad2.co.il`, `www.madlan.co.il` (proxy 403 on
   CONNECT). The owner chose to add them under Allowed domains
@@ -213,7 +214,8 @@ Cleaning rules (applied before any statistic):
 - [ ] Drop the redundant partial index `deals_valid_locality_date_idx` (deferred).
 - [x] Create the Vercel project and link it to the repository.
 - [ ] Add `DATABASE_URL` as a GitHub repository secret.
-- [ ] Merge to `main`, get the production URL, put it in `README.md`.
+- [x] Merge to `main`, get the production URL, put it in `README.md`.
+- [ ] Owner confirms https://apartment-data.vercel.app opens without a Vercel login.
 
 ### Phase 1 — Reference data
 - [ ] Ingest the CBS localities file into `localities`, mark `is_city`.
