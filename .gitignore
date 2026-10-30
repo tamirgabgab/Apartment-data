@@ -14,7 +14,7 @@ dist/
 !.env.example
 
 # Data (raw responses and local databases are never committed)
-data/
+/data/
 *.duckdb
 *.parquet
 

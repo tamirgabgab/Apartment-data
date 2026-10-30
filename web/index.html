@@ -3,78 +3,107 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>מחירי דירות בערים</title>
-  <meta name="description" content="מעקב אחר מחירי דירות בערי ישראל לאורך זמן, לפי עסקאות שבוצעו בפועל.">
-  <style>
-    :root {
-      --bg: #f7f7f5;
-      --surface: #ffffff;
-      --text: #1d1d1b;
-      --muted: #5f5f5a;
-      --accent: #1f6f5c;
-      --border: #e2e2dd;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #141413;
-        --surface: #1f1f1d;
-        --text: #ececea;
-        --muted: #a3a39d;
-        --accent: #5cc3a6;
-        --border: #33332f;
-      }
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: system-ui, -apple-system, "Segoe UI", "Rubik", "Heebo", sans-serif;
-      line-height: 1.6;
-    }
-    main {
-      max-width: 720px;
-      margin: 0 auto;
-      padding: 48px 16px;
-    }
-    h1 { font-size: 1.9rem; margin: 0 0 8px; }
-    .lead { color: var(--muted); margin: 0 0 32px; }
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 20px 24px;
-    }
-    .status {
-      display: inline-block;
-      font-size: 0.85rem;
-      color: var(--accent);
-      border: 1px solid var(--accent);
-      border-radius: 999px;
-      padding: 2px 12px;
-      margin-bottom: 12px;
-    }
-    ul { padding-inline-start: 20px; margin: 8px 0 0; }
-    footer { color: var(--muted); font-size: 0.85rem; margin-top: 32px; }
-  </style>
+  <title>מחירי דירות בישראל</title>
+  <meta name="description" content="איך השתנו מחירי הדירות ושכר הדירה בכל מחוז ועיר גדולה בישראל, רבעון אחרי רבעון, לפי נתוני הלשכה המרכזית לסטטיסטיקה.">
+  <link rel="stylesheet" href="style.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+  <script defer src="app.js"></script>
 </head>
 <body>
-  <main>
-    <h1>מחירי דירות בערים</h1>
-    <p class="lead">מעקב אחר מחירי דירות בערי ישראל לאורך זמן, לפי עסקאות שבוצעו בפועל.</p>
+  <main class="viz-root">
+    <header class="page-header">
+      <h1>מחירי דירות בישראל</h1>
+      <p class="lead">איך השתנו מחירי הדירות ושכר הדירה בכל מחוז ובכל עיר גדולה, רבעון אחרי רבעון.</p>
+      <p class="updated" id="updated"></p>
+    </header>
 
-    <section class="card">
-      <span class="status">בבנייה</span>
-      <p>האתר עדיין בבנייה. בקרוב יופיעו כאן:</p>
-      <ul>
-        <li>גרף מחיר חציוני למ"ר לכל עיר, לפי רבעון.</li>
-        <li>השוואה בין ערים, ופילוח לפי מספר חדרים ולפי חדש מול יד שנייה.</li>
-        <li>מחירים נומינליים וריאליים (אחרי ניכוי אינפלציה).</li>
-        <li>השוואה למדד מחירי הדירות של הלמ"ס.</li>
-      </ul>
+    <section class="controls" aria-label="אפשרויות תצוגה">
+      <div class="control">
+        <span class="control-label" id="kind-label">סוג</span>
+        <div class="segmented" role="radiogroup" aria-labelledby="kind-label" data-key="kind">
+          <button type="button" role="radio" data-value="sale">מחיר דירה</button>
+          <button type="button" role="radio" data-value="rent">שכר דירה</button>
+        </div>
+      </div>
+      <div class="control">
+        <label class="control-label" for="rooms">חדרים</label>
+        <select id="rooms"></select>
+      </div>
+      <div class="control">
+        <span class="control-label" id="real-label">מחירים</span>
+        <div class="segmented" role="radiogroup" aria-labelledby="real-label" data-key="real">
+          <button type="button" role="radio" data-value="nominal">נומינליים</button>
+          <button type="button" role="radio" data-value="real">ריאליים</button>
+        </div>
+      </div>
+      <div class="control">
+        <span class="control-label" id="mode-label">הצגה</span>
+        <div class="segmented" role="radiogroup" aria-labelledby="mode-label" data-key="mode">
+          <button type="button" role="radio" data-value="price">מחיר</button>
+          <button type="button" role="radio" data-value="change">שינוי באחוזים</button>
+        </div>
+      </div>
+      <div class="control" id="base-control">
+        <label class="control-label" for="base">מאז</label>
+        <select id="base"></select>
+      </div>
     </section>
 
-    <footer>מקורות: רשות המסים (nadlan.gov.il) והלשכה המרכזית לסטטיסטיקה.</footer>
+    <nav class="tabs" role="tablist" aria-label="תצוגות">
+      <button type="button" role="tab" id="tab-map" aria-controls="panel-map" data-tab="map">מפה</button>
+      <button type="button" role="tab" id="tab-line" aria-controls="panel-line" data-tab="line">לאורך זמן</button>
+      <button type="button" role="tab" id="tab-heat" aria-controls="panel-heat" data-tab="heat">מפת חום</button>
+    </nav>
+
+    <section class="panel" id="panel-map" role="tabpanel" aria-labelledby="tab-map">
+      <div class="map-layout">
+        <div class="card map-card">
+          <div class="time-bar">
+            <button type="button" class="play" id="play" aria-label="הפעלה">▶</button>
+            <input type="range" id="time" dir="ltr" min="0" max="0" step="1" aria-label="רבעון">
+            <output id="time-label" for="time"></output>
+          </div>
+          <div id="map" class="chart chart-map" role="img" aria-label="מפת מחירים לפי מחוז ועיר"></div>
+          <p class="hint">גוררים את הסרגל או לוחצים ▶ כדי לראות את השינוי לאורך הזמן. אפשר להתקרב במפה בגלילה.</p>
+        </div>
+        <div class="card table-card">
+          <h2 id="rank-title">דירוג</h2>
+          <div class="table-wrap">
+            <table class="rank" aria-labelledby="rank-title">
+              <thead>
+                <tr><th scope="col">מקום</th><th scope="col" id="rank-value-head">מחיר</th><th scope="col" id="rank-change-head">שינוי</th><th scope="col" id="rank-deals-head">עסקאות</th></tr>
+              </thead>
+              <tbody id="rank-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-line" role="tabpanel" aria-labelledby="tab-line" hidden>
+      <div class="card">
+        <div class="picker" id="picker" aria-label="בחירת מקומות להשוואה"></div>
+        <p class="hint" id="picker-hint">אפשר לבחור עד 8 מקומות להשוואה.</p>
+        <div id="line" class="chart chart-line" role="img" aria-label="גרף המחירים לאורך זמן"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-heat" role="tabpanel" aria-labelledby="tab-heat" hidden>
+      <div class="card">
+        <div id="heat" class="chart chart-heat" role="img" aria-label="מפת חום של המחירים לפי מקום ורבעון"></div>
+        <p class="hint">בהצגת שינוי באחוזים, מקום שאין לו נתון ברבעון הבסיס מוצג ריק (למשל הרצלייה וחדרה, שהנתונים עליהן מתחילים ב-2021).</p>
+      </div>
+    </section>
+
+    <footer class="notes">
+      <h2>על הנתונים</h2>
+      <ul id="notes"></ul>
+      <p>
+        מקור: <a href="https://www.cbs.gov.il">הלשכה המרכזית לסטטיסטיקה</a>.
+        גבולות המחוזות: <a href="https://www.geoboundaries.org">geoBoundaries</a> (נחלת הכלל).
+        קוד פתוח: <a href="https://github.com/tamirgabgab/Apartment-data">GitHub</a>.
+      </p>
+    </footer>
   </main>
 </body>
 </html>
