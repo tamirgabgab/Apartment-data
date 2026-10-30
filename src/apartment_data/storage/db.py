@@ -35,8 +35,8 @@ def upsert_localities(conn: psycopg.Connection, localities: Iterable[Locality]) 
         cur.executemany(
             """
             insert into public.localities (locality_code, name_he, name_en, municipal_status,
-                district, sub_district, population, is_city)
-            values (%s, %s, %s, %s, %s, %s, %s, %s)
+                district, sub_district, population, is_city, lat, lon)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             on conflict (locality_code) do update set
                 name_he = excluded.name_he,
                 name_en = excluded.name_en,
@@ -45,6 +45,8 @@ def upsert_localities(conn: psycopg.Connection, localities: Iterable[Locality]) 
                 sub_district = excluded.sub_district,
                 population = excluded.population,
                 is_city = excluded.is_city,
+                lat = excluded.lat,
+                lon = excluded.lon,
                 updated_at = now()
             """,
             [astuple(loc) for loc in localities],

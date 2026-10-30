@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from apartment_data.config import REPO_ROOT, load_settings
+from apartment_data.reference.geo import parse_cbs_coordinates
 from apartment_data.reference.names import normalize_name
 from apartment_data.sources.datagov import DataGovClient
 
@@ -57,6 +58,8 @@ class Locality:
     sub_district: str | None
     population: int | None
     is_city: bool
+    lat: float | None = None
+    lon: float | None = None
 
 
 @dataclass(frozen=True)
@@ -97,6 +100,7 @@ def parse_cbs_localities(records: Iterable[dict[str, Any]]) -> list[Locality]:
         name = _clean(_first(record, _NAME_KEYS))
         if code is None or name is None:
             continue
+        position = parse_cbs_coordinates(record.get("קואורדינטות"))
         localities.append(
             Locality(
                 locality_code=code,
@@ -107,6 +111,8 @@ def parse_cbs_localities(records: Iterable[dict[str, Any]]) -> list[Locality]:
                 sub_district=_clean(record.get("שם נפה")),
                 population=_population(record),
                 is_city=_int(record.get("סמל מעמד מונציפאלי")) == CITY_STATUS_CODE,
+                lat=position[0] if position else None,
+                lon=position[1] if position else None,
             )
         )
     return localities
