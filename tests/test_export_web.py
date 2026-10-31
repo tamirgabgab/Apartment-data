@@ -78,3 +78,31 @@ def test_build_payload_shapes_series_places_and_real_factor():
     assert payload["real_factor"] == [1.1, 1.0]
     assert payload["real_base"] == "2025-04-01"
     assert payload["indices"]["40010"]["values"] == [500.0, 500.0]
+
+
+def test_build_rates_aligns_quarters_and_starts_with_mortgage_data():
+    from apartment_data.export.web import build_rates
+
+    def row(code, period, value):
+        return {"series_code": code, "series_name": code, "period": period, "value": value}
+
+    rates = [
+        row("prime", "2016-12-01", 1.6),
+        row("prime", "2017-01-01", 1.6),
+        row("prime", "2017-02-01", 2.2),
+        row("mortgage_fixed_cpi", "2017-02-01", "3.0"),
+    ]
+    out = build_rates(rates, [date(2017, 1, 1), date(2017, 4, 1)])
+
+    assert out["months"] == ["2017-02-01"]
+    assert list(out["series"]) == ["mortgage_fixed_cpi", "prime"]
+    assert out["series"]["prime"]["values"] == [2.2]
+    # Quarterly means use every published month, also those before the chart starts.
+    assert out["quarterly"]["prime"] == [1.9, None]
+    assert out["quarterly"]["mortgage_fixed_cpi"] == [3.0, None]
+
+
+def test_build_rates_without_data_is_empty():
+    from apartment_data.export.web import build_rates
+
+    assert build_rates([], [date(2017, 1, 1)]) == {"months": [], "series": {}, "quarterly": {}}

@@ -176,3 +176,18 @@ table.rank { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .notes { margin-top: 32px; color: var(--text-secondary); font-size: 0.85rem; }
 .notes h2 { font-size: 1rem; color: var(--text-primary); }
 .notes a { color: var(--accent); }
+
+/* Mortgage payment inputs */
+.num-input {
+  width: 5.5em;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.9rem;
+}
+.card-title { font-size: 1rem; margin: 0 0 8px; }
+/* The rates tab has its own fixed content; only the share / download actions apply. */
+.controls.rates-tab .control:not(.actions) { display: none; }

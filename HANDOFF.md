@@ -111,6 +111,17 @@ the README.
 - **Website features (round 2):** price-to-rent ratio (years of rent = sale price / yearly
   rent, rooms groups common to both tables), 4-quarter moving average toggle, share link
   (view kept in the URL hash), CSV download of the current view (UTF-8 BOM for Excel).
+- **Mortgage rates (Phase 2c):** `python -m apartment_data.sources.boi_rates [--load]` reads
+  the Bank of Israel SDMX API (see `docs/sources/boi.md`): monthly average rates on new
+  mortgages from 2011-07 for fixed unindexed, fixed CPI-linked and variable CPI-linked tracks,
+  and the policy rate (month end) plus prime = policy + 1.5. Table `interest_rates`. BOI does
+  not publish the prime track's own average rate, so the site uses the prime rate (owner
+  decision). The workflow runs it monthly (`job: boi-rates`).
+- **Website (round 3):** "החזר משכנתא" kind: opening monthly payment (Spitzer) on the average
+  sale price, with user-chosen track (default mix: ⅓ prime, ⅓ fixed unindexed, ⅓ fixed
+  CPI-linked), LTV (default 70%) and term (default 25 years), at the quarter's mean rate. It
+  works in every view (map, ranking, line, heatmap, % change, real prices, CSV, share link).
+  New "ריביות" tab with the monthly rates chart and a rates CSV.
 - If deal data arrives later: raw responses go to a private Supabase Storage bucket, and the
   pilot cities are Tel Aviv-Yafo, Jerusalem, Haifa, Beer Sheva, Sderot (owner decisions).
 
@@ -283,7 +294,8 @@ Cleaning rules (applied before any statistic):
 - [x] CBS average prices and rents by district and big city (`cbs_tables`).
 - [x] New dwellings price index (from 2019).
 - [ ] Average prices by city before 2017 (search older CBS publications).
-- [ ] Bank of Israel mortgage rates (owner asked; BOI hosts are allowed since 2026-10-31).
+- [x] Bank of Israel mortgage rates by track, policy and prime rate (`boi_rates`).
+- [ ] Mortgage volumes, number of loans, term and payment-to-income (same BOI dataflow).
 
 ### Phase 3 — Transactions (blocked: needs permission or FOI data)
 - [x] Investigate the current API, document it in `docs/sources/nadlan.md` (ToS forbid it).
@@ -306,6 +318,7 @@ Cleaning rules (applied before any statistic):
 ### Phase 6 — Website
 - [x] JSON export job.
 - [x] Interactive site on CBS data: map + time slider, line chart, heatmap, ranking.
+- [x] Mortgage payment view and rates chart.
 
 ### Phase 7 — Automation
 - [x] GitHub Actions monthly CBS update and website re-export (`update-data.yml`).
@@ -379,5 +392,7 @@ Cleaning rules (applied before any statistic):
   pre-2017 history.
 - **2026-10-31 (1)** — Checked network access: BOI hosts are now allowed. Owner ran the
   pending cleanup in the SQL Editor (dropped the `http` extension and the redundant partial
-  index), verified via the MCP. Pending owner: send the two data requests. Next: mortgage
-  rates or pre-2017 city history, per owner choice.
+  index), verified via the MCP. Owner chose mortgage rates: added the BOI fetcher, table
+  `interest_rates` (migration applied via the MCP), the payment view and the rates tab.
+  Pending owner: send the two data requests. Next: pre-2017 city history, or source-failure
+  alerts.

@@ -6,7 +6,7 @@ on:
       job:
         description: Which data to update
         type: choice
-        options: [all, localities, cbs-index, cbs-tables]
+        options: [all, localities, cbs-index, cbs-tables, boi-rates]
         default: all
       backfill:
         description: Walk every CBS table edition (slow, about 10 minutes)
@@ -49,6 +49,9 @@ jobs:
       - name: CBS average prices and rents
         if: "!cancelled() && (github.event_name == 'schedule' || inputs.job == 'all' || inputs.job == 'cbs-tables')"
         run: python -m apartment_data.sources.cbs_tables --load ${{ inputs.backfill && '--backfill' || '' }}
+      - name: Bank of Israel interest rates
+        if: "!cancelled() && (github.event_name == 'schedule' || inputs.job == 'all' || inputs.job == 'boi-rates')"
+        run: python -m apartment_data.sources.boi_rates --load
       - name: Export website data
         if: "!cancelled()"
         run: python -m apartment_data.export.web
