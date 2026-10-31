@@ -48,6 +48,17 @@ const RATE_LABELS = {
 };
 const DEFAULT_LTV = 70;
 const DEFAULT_YEARS = 25;
+const MAX_LTV = 75; // Bank of Israel cap for a first home
+const CALC_DEFAULTS = { income: 20000, equity: 600000, pti: 30, years: 25, track: "mix", rooms: "all" };
+
+// One sentence on what the current kind means, for readers new to the terms.
+const EXPLAIN = {
+  sale: 'מחיר ממוצע של הדירות שנמכרו בפועל ברבעון, לפי הלמ"ס. זה ממוצע ולא מדד: אם ברבעון נמכרו יותר דירות גדולות, הממוצע עולה גם בלי שהמחירים עלו.',
+  rent: 'שכר הדירה החודשי הממוצע, לפי סקר שכר הדירה של הלמ"ס.',
+  ratio: "כמה שנים של שכר דירה שווה דירה: המחיר הממוצע חלקי שכר הדירה השנתי הממוצע. יחס גבוה אומר שקנייה יקרה ביחס לשכירות.",
+  payment: "ההחזר החודשי ההתחלתי על משכנתא לדירה במחיר ממוצע, לפי הריבית הממוצעת באותו רבעון. את המסלול, אחוז המימון והתקופה משנים בשדות למעלה.",
+};
+const THEMES = { auto: "אוטומטית", light: "בהירה", dark: "כהה" };
 
 const state = {
   kind: "sale", // 'sale', 'rent', 'ratio' (price / yearly rent) or 'payment' (monthly mortgage)
@@ -61,6 +72,8 @@ const state = {
   base: 0,
   t: 0,
   tab: "map",
+  place: null, // place shown in the side panel
+  calc: { ...CALC_DEFAULTS },
   selected: [],
   slots: {}, // place id -> palette slot; colour follows the place, not its position
 };
@@ -69,6 +82,7 @@ let DATA = null;
 let PLACES = {};
 const charts = {};
 let playTimer = null;
+let heatRows = [];
 
 // ---------- helpers ----------
 
@@ -112,6 +126,14 @@ function formatValue(v) {
   if (state.kind === "sale") return `${nf2.format(v / 1e6)} מיליון ₪`;
   if (state.kind === "ratio") return `${v.toFixed(1)} שנים`;
   return `${nf0.format(v)} ₪`;
+}
+
+function money(v) {
+  return v == null || Number.isNaN(v) ? "—" : `${nf0.format(Math.round(v))} ₪`;
+}
+
+function millions(v) {
+  return v == null || Number.isNaN(v) ? "—" : `${nf2.format(v / 1e6)} מיליון ₪`;
 }
 
 function formatRate(v) {
@@ -164,18 +186,50 @@ function annuity(principal, annualRatePct, years) {
   return (principal * r) / (1 - (1 + r) ** -n);
 }
 
+// Opening monthly payment per 1 NIS of loan in quarter i, or null without rates.
+function loanFactor(track, years, i) {
+  let total = 0;
+  for (const [code, share] of TRACKS[track].parts) {
+    const rate = DATA.rates?.quarterly?.[code]?.[i];
+    if (rate == null) return null;
+    total += annuity(share, rate, years);
+  }
+  return total;
+}
+
 // Opening monthly payment on a loan of LTV % of the average price, at the quarter's rates.
 function payment(placeId, i) {
   const sale = rawPrice("sale", placeId, i);
-  if (sale == null) return null;
-  const principal = (sale * state.ltv) / 100;
-  let total = 0;
-  for (const [code, share] of TRACKS[state.track].parts) {
-    const rate = DATA.rates?.quarterly?.[code]?.[i];
-    if (rate == null) return null;
-    total += annuity(principal * share, rate, state.years);
+  const f = loanFactor(state.track, state.years, i);
+  return sale == null || f == null ? null : ((sale * state.ltv) / 100) * f;
+}
+
+// Nominal published value, independent of the view options.
+function published(kind, placeId, rooms, i) {
+  return DATA.series[kind]?.[placeId]?.[rooms]?.price?.[i] ?? null;
+}
+
+function lastIndex(kind, placeId, rooms = "all") {
+  for (let i = DATA.periods.length - 1; i >= 0; i--) {
+    if (published(kind, placeId, rooms, i) != null) return i;
   }
-  return total;
+  return -1;
+}
+
+function firstIndex(kind, placeId, rooms = "all") {
+  return DATA.periods.findIndex((_, i) => published(kind, placeId, rooms, i) != null);
+}
+
+function pctChange(now, then) {
+  return now == null || then == null || then === 0 ? null : (now / then - 1) * 100;
+}
+
+function signed(v) {
+  return v == null ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
+}
+
+function trendClass(v) {
+  return v == null ? "" : v > 0 ? "up" : v < 0 ? "down" : "";
 }
 
 // The level shown before the change transform: a price in NIS (nominal or real), for
@@ -365,8 +419,18 @@ function syncControls() {
   document.querySelectorAll(".payment-control").forEach((el) => {
     el.hidden = state.kind !== "payment";
   });
-  $(".controls").classList.toggle("rates-tab", state.tab === "rates");
+  $(".controls").classList.toggle("own-tab", state.tab === "rates" || state.tab === "calc");
   $("#smooth").checked = state.smooth;
+  renderExplain();
+}
+
+function renderExplain() {
+  let text = EXPLAIN[state.kind] || "";
+  if (state.real === "real" && state.kind !== "ratio") {
+    text += " במחירים ריאליים הסכומים מתואמים לאינפלציה, בשקלים של הרבעון האחרון.";
+  }
+  if (state.mode === "change") text += " מוצג השינוי באחוזים מאז הרבעון שנבחר.";
+  $("#explain").textContent = text;
 }
 
 function showTab(tab) {
@@ -374,7 +438,7 @@ function showTab(tab) {
   document.querySelectorAll(".tabs button").forEach((b) => {
     b.setAttribute("aria-selected", String(b.dataset.tab === tab));
   });
-  for (const name of ["map", "line", "heat", "rates"]) {
+  for (const name of ["map", "line", "heat", "rates", "calc"]) {
     $(`#panel-${name}`).hidden = name !== tab;
   }
   syncControls();
@@ -507,7 +571,7 @@ function renderRanking() {
     .map(({ p, v, ch, d }) => {
       const second = state.mode === "change" ? formatPriceOnly(price(p.id, i)) : formatPercent(ch);
       const cls = ch == null ? "" : ch > 0 ? "up" : ch < 0 ? "down" : "";
-      return `<tr class="level-${p.level}"><td>${placeLabel(p)}</td><td class="num">${formatValue(v)}</td>` +
+      return `<tr class="level-${p.level}" data-id="${p.id}" tabindex="0"><td>${placeLabel(p)}</td><td class="num">${formatValue(v)}</td>` +
         `<td class="num ${state.mode === "change" ? "" : cls}">${second}</td>` +
         (saleBased() ? `<td class="num">${d == null ? "—" : nf0.format(d)}</td>` : "") +
         "</tr>";
@@ -668,6 +732,7 @@ function renderHeat() {
   const c = ink();
   const places = placesWithData();
   const rows = places.slice().reverse(); // first place on top
+  heatRows = rows;
   const data = [];
   rows.forEach((p, y) => {
     DATA.periods.forEach((_, x) => {
@@ -774,6 +839,379 @@ function renderRates() {
   );
 }
 
+// ---------- headline cards ----------
+
+function kpiCard(label, value, sub) {
+  return `<div class="kpi"><p class="kpi-label">${label}</p><p class="kpi-value">${value}</p><p class="kpi-sub">${sub}</p></div>`;
+}
+
+// Fixed headline numbers for the whole country, independent of the view options.
+function renderKpis() {
+  const cards = [];
+  const i = lastIndex("sale", "n0");
+  if (i >= 0) {
+    const now = published("sale", "n0", "all", i);
+    cards.push(kpiCard("מחיר דירה ממוצע בישראל", millions(now), quarterLabel(DATA.periods[i])));
+    if (i >= 4) {
+      const then = published("sale", "n0", "all", i - 4);
+      const yoy = pctChange(now, then);
+      const f = DATA.real_factor;
+      const real = f[i] != null && f[i - 4] != null ? pctChange(now * f[i], then * f[i - 4]) : null;
+      cards.push(
+        kpiCard(
+          "שינוי במחיר בשנה האחרונה",
+          `<span class="${trendClass(yoy)}">${signed(yoy)}</span>`,
+          `לעומת ${quarterLabel(DATA.periods[i - 4])}` + (real != null ? ` · ריאלי ${signed(real)}` : ""),
+        ),
+      );
+    }
+  }
+  const prime = DATA.rates?.series?.prime?.values;
+  if (prime) {
+    let k = prime.length - 1;
+    while (k >= 0 && prime[k] == null) k--;
+    if (k >= 0) {
+      const [y, m] = DATA.rates.months[k].split("-");
+      const ago = k >= 12 ? prime[k - 12] : null;
+      cards.push(kpiCard("ריבית הפריים", formatRate(prime[k]), `${m}/${y}` + (ago != null ? ` · לפני שנה ${formatRate(ago)}` : "")));
+    }
+  }
+  for (let j = i; j >= 0; j--) {
+    const f = loanFactor("mix", DEFAULT_YEARS, j);
+    const price = published("sale", "n0", "all", j);
+    if (f == null || price == null) continue;
+    cards.push(
+      kpiCard(
+        "החזר חודשי על דירה ממוצעת",
+        money((price * DEFAULT_LTV) / 100 * f),
+        `${DEFAULT_LTV}% מימון, ${DEFAULT_YEARS} שנה, תמהיל · ${quarterLabel(DATA.periods[j])}`,
+      ),
+    );
+    break;
+  }
+  $("#kpis").innerHTML = cards.join("");
+}
+
+// ---------- place panel ----------
+
+function districtName(p) {
+  return p.district ? PLACES[p.district]?.name : null;
+}
+
+function openPlace(id) {
+  if (!PLACES[id]) return;
+  const wasOpen = state.place != null;
+  state.place = id;
+  $("#place-panel").hidden = false;
+  if (!charts.place) charts.place = echarts.init($("#pp-chart"));
+  renderPlace();
+  charts.place.resize();
+  writeHash();
+  if (!wasOpen) $("#pp-close").focus();
+}
+
+function closePlace() {
+  state.place = null;
+  $("#place-panel").hidden = true;
+  writeHash();
+}
+
+function ppStat(label, value, sub = "") {
+  return `<div class="pp-stat"><p class="kpi-label">${label}</p><p class="kpi-value">${value}</p>${sub ? `<p class="kpi-sub">${sub}</p>` : ""}</div>`;
+}
+
+function renderPlace() {
+  const id = state.place;
+  const p = PLACES[id];
+  if (!p) return;
+  $("#pp-title").textContent = p.name;
+  const sub = [];
+  if (p.level === "city") {
+    if (districtName(p)) sub.push(districtName(p));
+    if (p.population) sub.push(`${nf0.format(p.population)} תושבים`);
+  } else if (p.level === "district") {
+    sub.push("מחוז");
+  } else {
+    sub.push("ממוצע ארצי");
+  }
+  $("#pp-sub").textContent = sub.join(" · ");
+
+  const i = lastIndex("sale", id);
+  const stats = [];
+  if (i >= 0) {
+    const price = published("sale", id, "all", i);
+    stats.push(ppStat("מחיר ממוצע", millions(price), quarterLabel(DATA.periods[i])));
+    const yoy = i >= 4 ? pctChange(price, published("sale", id, "all", i - 4)) : null;
+    stats.push(ppStat("שינוי בשנה", `<span class="${trendClass(yoy)}">${signed(yoy)}</span>`, i >= 4 ? `לעומת ${quarterLabel(DATA.periods[i - 4])}` : ""));
+    const first = firstIndex("sale", id);
+    const since = pctChange(price, published("sale", id, "all", first));
+    stats.push(ppStat("שינוי מאז תחילת הנתונים", `<span class="${trendClass(since)}">${signed(since)}</span>`, `מאז ${quarterLabel(DATA.periods[first])}`));
+    // Rank among places of the same level in the same quarter.
+    const peers = DATA.places
+      .filter((q) => q.level === p.level && published("sale", q.id, "all", i) != null)
+      .sort((a, b) => published("sale", b.id, "all", i) - published("sale", a.id, "all", i));
+    if (peers.length > 1) {
+      const kindName = p.level === "city" ? "ערים" : "מחוזות";
+      stats.push(ppStat("דירוג המחיר", `${peers.findIndex((q) => q.id === id) + 1} מתוך ${peers.length}`, `${kindName}, מהיקר לזול`));
+    }
+    const ri = lastIndex("rent", id);
+    if (ri >= 0) {
+      const rent = published("rent", id, "all", ri);
+      stats.push(ppStat("שכר דירה ממוצע", money(rent), quarterLabel(DATA.periods[ri])));
+      if (ri === i && rent) stats.push(ppStat("שנות שכירות", `${(price / (rent * 12)).toFixed(1)}`, "מחיר חלקי שכר דירה שנתי"));
+    }
+    for (let j = i; j >= 0; j--) {
+      const f = loanFactor(state.track, state.years, j);
+      const pj = published("sale", id, "all", j);
+      if (f == null || pj == null) continue;
+      stats.push(ppStat("החזר חודשי", money((pj * state.ltv) / 100 * f), `${state.ltv}% מימון, ${state.years} שנה, ${TRACKS[state.track].label}`));
+      break;
+    }
+    const d = DATA.series.sale?.[id]?.all?.deals?.[i];
+    if (d != null) stats.push(ppStat("עסקאות ברבעון", nf0.format(d), quarterLabel(DATA.periods[i])));
+  } else {
+    stats.push(ppStat("אין נתוני מחירים", "—"));
+  }
+  $("#pp-stats").innerHTML = stats.join("");
+
+  // Rooms breakdown in the newest quarter with a sale price.
+  const rooms = (DATA.rooms.sale || []).filter((r) => r !== "all");
+  const ri = lastIndex("rent", id);
+  const rows = rooms
+    .map((r) => {
+      const sp = i >= 0 ? published("sale", id, r, i) : null;
+      const rp = ri >= 0 ? published("rent", id, r, ri) : null;
+      if (sp == null && rp == null) return "";
+      return `<tr><td>${ROOM_LABELS[r] || r}</td><td class="num">${millions(sp)}</td><td class="num">${money(rp)}</td></tr>`;
+    })
+    .join("");
+  $("#pp-rooms").innerHTML = rows
+    ? `<thead><tr><th scope="col">חדרים</th><th scope="col">מחיר ממוצע</th><th scope="col">שכר דירה</th></tr></thead><tbody>${rows}</tbody>`
+    : "";
+
+  const on = state.selected.includes(id);
+  $("#pp-compare").textContent = on ? "הצגה בגרף ההשוואה" : "הוספה לגרף ההשוואה";
+  $("#pp-compare").disabled = !on && state.selected.length >= MAX_COMPARE;
+  renderPlaceChart(id);
+}
+
+function renderPlaceChart(id) {
+  const c = ink();
+  const pal = PALETTE[theme()];
+  const lines = [[id, pal.series[0]]];
+  if (id !== "n0") lines.push(["n0", pal.index]);
+  charts.place.setOption(
+    {
+      backgroundColor: "transparent",
+      grid: { left: 44, right: 12, top: 28, bottom: 28 },
+      legend: { top: 0, textStyle: { color: c.secondary, fontSize: 11 }, itemWidth: 14, itemHeight: 6, icon: "roundRect" },
+      tooltip: { trigger: "axis", valueFormatter: millions },
+      xAxis: {
+        type: "category",
+        data: DATA.periods.map(shortQuarter),
+        boundaryGap: false,
+        axisLine: { lineStyle: { color: c.axis } },
+        axisLabel: { color: c.muted, interval: 7, formatter: (v) => v.split(" ")[1] },
+        axisTick: { show: false },
+      },
+      yAxis: {
+        type: "value",
+        scale: true,
+        axisLabel: { color: c.muted, formatter: (v) => `${(v / 1e6).toFixed(1)}M` },
+        splitLine: { lineStyle: { color: c.grid } },
+      },
+      series: lines.map(([pid, colour]) => ({
+        name: PLACES[pid].name,
+        type: "line",
+        data: DATA.periods.map((_, i) => published("sale", pid, "all", i)),
+        showSymbol: false,
+        connectNulls: false,
+        lineStyle: { width: 2, color: colour, type: pid === id ? "solid" : "dashed" },
+        itemStyle: { color: colour },
+      })),
+    },
+    { notMerge: true },
+  );
+}
+
+function compareFromPanel() {
+  const id = state.place;
+  if (!state.selected.includes(id)) {
+    if (state.selected.length >= MAX_COMPARE) return;
+    state.selected.push(id);
+    slotFor(id);
+  }
+  closePlace();
+  showTab("line");
+  window.scrollTo({ top: $(".tabs").offsetTop - 8, behavior: "smooth" });
+}
+
+// Rows with data-id open the place panel, by click or keyboard.
+function bindPlaceRows(tbody) {
+  tbody.addEventListener("click", (e) => {
+    const row = e.target.closest("tr[data-id]");
+    if (row) openPlace(row.dataset.id);
+  });
+  tbody.addEventListener("keydown", (e) => {
+    const row = e.target.closest("tr[data-id]");
+    if (row && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      openPlace(row.dataset.id);
+    }
+  });
+}
+
+// ---------- affordability calculator ----------
+
+function loadCalc() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("calc") || "{}");
+    for (const key of Object.keys(CALC_DEFAULTS)) {
+      if (saved[key] != null) state.calc[key] = saved[key];
+    }
+  } catch {}
+  if (!TRACKS[state.calc.track]) state.calc.track = CALC_DEFAULTS.track;
+  if (!(DATA.rooms.sale || []).includes(state.calc.rooms)) state.calc.rooms = "all";
+}
+
+function saveCalc() {
+  try {
+    localStorage.setItem("calc", JSON.stringify(state.calc));
+  } catch {}
+}
+
+function fillCalc() {
+  const c = state.calc;
+  $("#calc-income").value = c.income;
+  $("#calc-equity").value = c.equity;
+  $("#calc-pti").value = c.pti;
+  $("#calc-years").value = c.years;
+  $("#calc-track").innerHTML = Object.entries(TRACKS)
+    .map(([k, t]) => `<option value="${k}"${k === c.track ? " selected" : ""}>${t.label}</option>`)
+    .join("");
+  $("#calc-rooms").innerHTML = (DATA.rooms.sale || ["all"])
+    .map((r) => `<option value="${r}"${r === c.rooms ? " selected" : ""}>${ROOM_LABELS[r] || r}</option>`)
+    .join("");
+}
+
+function bindCalc() {
+  const numbers = [
+    ["#calc-income", "income", 0, 10_000_000],
+    ["#calc-equity", "equity", 0, 1_000_000_000],
+    ["#calc-pti", "pti", 5, 60],
+    ["#calc-years", "years", 1, 40],
+  ];
+  for (const [sel, key, lo, hi] of numbers) {
+    $(sel).addEventListener("input", (e) => {
+      state.calc[key] = clampInput(e.target, lo, hi, state.calc[key]);
+      saveCalc();
+      renderCalc();
+    });
+  }
+  for (const [sel, key] of [["#calc-track", "track"], ["#calc-rooms", "rooms"]]) {
+    $(sel).addEventListener("change", (e) => {
+      state.calc[key] = e.target.value;
+      saveCalc();
+      renderCalc();
+    });
+  }
+}
+
+// The newest quarter with prices and with rates for the chosen track.
+function calcQuarter() {
+  const c = state.calc;
+  for (let i = DATA.periods.length - 1; i >= 0; i--) {
+    if (loanFactor(c.track, c.years, i) != null && published("sale", "n0", c.rooms, i) != null) return i;
+  }
+  return -1;
+}
+
+function calcRows() {
+  const c = state.calc;
+  const i = calcQuarter();
+  if (i < 0) return { i, rows: [] };
+  const f = loanFactor(c.track, c.years, i);
+  const budget = (c.income * c.pti) / 100;
+  const rows = DATA.places
+    .map((p) => {
+      const price = published("sale", p.id, c.rooms, i);
+      if (price == null) return null;
+      const loan = Math.max(0, price - c.equity);
+      const pay = loan * f;
+      const missingEquity = Math.max(0, price * (1 - MAX_LTV / 100) - c.equity);
+      const share = c.income > 0 ? (pay / c.income) * 100 : Infinity;
+      return { p, price, pay, missingEquity, share, ok: missingEquity === 0 && pay <= budget };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.price - b.price);
+  return { i, f, budget, rows };
+}
+
+function renderCalc() {
+  const c = state.calc;
+  const { i, f, budget, rows } = calcRows();
+  if (i < 0) {
+    $("#calc-headline").innerHTML = "<p>אין מספיק נתונים לחישוב.</p>";
+    $("#calc-body").innerHTML = "";
+    return;
+  }
+  const byIncome = c.equity + budget / f;
+  const byEquity = c.equity / (1 - MAX_LTV / 100);
+  const max = Math.min(byIncome, byEquity);
+  const reason =
+    byIncome <= byEquity
+      ? `ההחזר החודשי הוא המגבלה: ${c.pti}% מההכנסה הם ${money(budget)} בחודש, שמספיקים להלוואה של עד ${millions(budget / f)}.`
+      : `ההון העצמי הוא המגבלה: במימון של עד ${MAX_LTV}%, הון עצמי של ${money(c.equity)} מספיק לדירה של עד ${millions(byEquity)}.`;
+  const okCount = rows.filter((r) => r.ok).length;
+  $("#calc-headline").innerHTML =
+    `<p>אפשר לקנות דירה במחיר של עד</p><p class="big">${millions(max)}</p>` +
+    `<p>${reason}</p>` +
+    `<p>מחיר ממוצע בהישג יד ב-${okCount} מתוך ${rows.length} מקומות (${ROOM_LABELS[c.rooms]}, ${quarterLabel(DATA.periods[i])}), ` +
+    `לפי הריבית הממוצעת באותו רבעון במסלול ${TRACKS[c.track].label}.</p>`;
+  $("#calc-body").innerHTML = rows
+    .map((r) => {
+      const why = [];
+      if (r.missingEquity > 0) why.push(`חסרים ${money(r.missingEquity)} הון עצמי`);
+      if (r.pay > budget) why.push(Number.isFinite(r.share) ? `ההחזר ${Math.round(r.share)}% מההכנסה` : "אין הכנסה להחזר");
+      const status = r.ok
+        ? `<span class="ok">✓ בהישג יד</span>`
+        : `<span class="no">✗ לא בהישג יד</span><span class="why">${why.join(" · ")}</span>`;
+      return `<tr class="level-${r.p.level}" data-id="${r.p.id}" tabindex="0"><td>${r.p.name}</td><td class="num">${millions(r.price)}</td>` +
+        `<td class="num">${r.pay > 0 ? money(r.pay) : "ללא משכנתא"}</td><td>${status}</td></tr>`;
+    })
+    .join("");
+}
+
+// ---------- theme ----------
+
+function currentThemeChoice() {
+  return document.documentElement.dataset.theme || "auto";
+}
+
+function applyThemeLabel() {
+  const choice = currentThemeChoice();
+  $("#theme").textContent = `תצוגה: ${THEMES[choice]}`;
+  $("#theme").setAttribute("aria-label", `ערכת צבעים: ${THEMES[choice]}. לחיצה מחליפה`);
+}
+
+function cycleTheme() {
+  const order = Object.keys(THEMES);
+  const next = order[(order.indexOf(currentThemeChoice()) + 1) % order.length];
+  if (next === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = next;
+  try {
+    if (next === "auto") localStorage.removeItem("theme");
+    else localStorage.setItem("theme", next);
+  } catch {}
+  applyThemeLabel();
+  rerenderAll();
+}
+
+function rerenderAll() {
+  render();
+  if (state.place) renderPlace();
+}
+
 // ---------- share link + CSV ----------
 
 // The view is kept in the URL hash, so a copied link opens the same view.
@@ -788,6 +1226,7 @@ function writeHash() {
     tab: state.tab,
     sel: state.selected.join(","),
   });
+  if (state.place) params.set("place", state.place);
   if (state.kind === "payment") {
     params.set("track", state.track);
     params.set("ltv", String(state.ltv));
@@ -811,7 +1250,8 @@ function readHash() {
   state.years = num("years", 1, 40) ?? state.years;
   state.real = pick("real", ["nominal", "real"]) ?? state.real;
   state.mode = pick("mode", ["price", "change"]) ?? state.mode;
-  state.tab = pick("tab", hasRates() ? ["map", "line", "heat", "rates"] : ["map", "line", "heat"]) ?? state.tab;
+  state.tab = pick("tab", hasRates() ? ["map", "line", "heat", "rates", "calc"] : ["map", "line", "heat"]) ?? state.tab;
+  state.place = PLACES[params.get("place")] ? params.get("place") : null;
   state.smooth = params.get("smooth") === "1";
   if (params.get("rooms")) state.rooms = params.get("rooms");
   const base = DATA.periods.indexOf(params.get("base"));
@@ -865,10 +1305,24 @@ function downloadRatesCsv() {
   download("mortgage-rates.csv", lines);
 }
 
+function downloadCalcCsv() {
+  const { i, rows } = calcRows();
+  const lines = [["place", "level", "quarter", "avg_price", "monthly_payment", "missing_equity", "payment_pct_of_income", "affordable"].join(",")];
+  for (const r of rows) {
+    const share = Number.isFinite(r.share) ? Math.round(r.share * 10) / 10 : "";
+    lines.push([r.p.name, r.p.level, DATA.periods[i], Math.round(r.price), Math.round(r.pay), Math.round(r.missingEquity), share, r.ok ? "yes" : "no"].map(csvCell).join(","));
+  }
+  download("affordability.csv", lines);
+}
+
 // Everything the current options show, one row per place and quarter.
 function downloadCsv() {
   if (state.tab === "rates") {
     downloadRatesCsv();
+    return;
+  }
+  if (state.tab === "calc") {
+    downloadCalcCsv();
     return;
   }
   const header = ["place", "level", "place_code", "quarter", valueName()];
@@ -908,6 +1362,8 @@ function render() {
   } else if (state.tab === "rates") {
     renderRates();
     charts.rates.resize();
+  } else if (state.tab === "calc") {
+    renderCalc();
   } else {
     renderHeat();
     charts.heat.resize();
@@ -934,7 +1390,11 @@ async function init() {
   // Older data files have no rates: hide what depends on them.
   $("#kind-payment").hidden = !hasRates();
   $("#tab-rates").hidden = !hasRates();
+  $("#tab-calc").hidden = !hasRates();
   readHash();
+  loadCalc();
+  applyThemeLabel();
+  renderKpis();
 
   const updated = new Date(DATA.generated_at);
   $("#updated").textContent = `עודכן ${updated.toLocaleDateString("he-IL")} · נתונים עד ${quarterLabel(DATA.periods.at(-1))}`;
@@ -949,17 +1409,45 @@ async function init() {
   fillRooms();
   fillBase();
   fillTrack();
+  fillCalc();
   syncControls();
   bindControls();
+  bindCalc();
+  bindPlaceRows($("#rank-body"));
+  bindPlaceRows($("#calc-body"));
+  $("#theme").addEventListener("click", cycleTheme);
+  $("#pp-close").addEventListener("click", closePlace);
+  $("#pp-compare").addEventListener("click", compareFromPanel);
+  $("#pp-share").addEventListener("click", async () => {
+    writeHash();
+    try {
+      await navigator.clipboard.writeText(location.href);
+      $("#pp-share").textContent = "הקישור הועתק ✓";
+    } catch {
+      window.prompt("העתיקו את הקישור:", location.href);
+    }
+    setTimeout(() => ($("#pp-share").textContent = "העתקת קישור"), 2000);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && state.place) closePlace();
+  });
 
   charts.map = echarts.init($("#map"));
   charts.line = echarts.init($("#line"));
   charts.heat = echarts.init($("#heat"));
   charts.rates = echarts.init($("#rates"));
+  charts.map.on("click", (params) => {
+    if (PLACES[params.name]) openPlace(params.name);
+  });
+  charts.heat.on("click", (params) => {
+    const row = heatRows[params.value?.[1]];
+    if (row) openPlace(row.id);
+  });
   window.addEventListener("resize", () => Object.values(charts).forEach((ch) => ch.resize()));
-  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", rerenderAll);
 
   showTab(state.tab);
+  if (state.place) openPlace(state.place);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
