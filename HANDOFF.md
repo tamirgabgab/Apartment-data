@@ -122,6 +122,15 @@ the README.
   CPI-linked), LTV (default 70%) and term (default 25 years), at the quarter's mean rate. It
   works in every view (map, ranking, line, heatmap, % change, real prices, CSV, share link).
   New "ריביות" tab with the monthly rates chart and a rates CSV.
+- **Website (round 4):** headline cards (national average price, yearly change nominal and
+  real, prime rate, payment on an average dwelling); a one-line explanation of the current
+  kind; a place side panel (bottom sheet on phones) opened from the map, ranking, heatmap or
+  `#place=` in the URL, with stats, rank among peers, a mini chart against the national
+  average, rooms breakdown and "add to comparison"; an affordability tab ("כמה אפשר להרשות":
+  income, equity, max payment-to-income (user-set, default 30%), track, term, rooms; LTV capped
+  at 75%; income and equity stay in the browser's localStorage and never go into the URL);
+  light / dark / auto theme toggle; mobile fixes; Open Graph tags, favicon and `web/og.png`
+  (a static snapshot made with Playwright, regenerate it when the design changes).
 - If deal data arrives later: raw responses go to a private Supabase Storage bucket, and the
   pilot cities are Tel Aviv-Yafo, Jerusalem, Haifa, Beer Sheva, Sderot (owner decisions).
 
@@ -319,6 +328,8 @@ Cleaning rules (applied before any statistic):
 - [x] JSON export job.
 - [x] Interactive site on CBS data: map + time slider, line chart, heatmap, ranking.
 - [x] Mortgage payment view and rates chart.
+- [x] Headline cards, explanations, place panel, affordability calculator, theme toggle,
+  mobile fixes, share image.
 
 ### Phase 7 — Automation
 - [x] GitHub Actions monthly CBS update and website re-export (`update-data.yml`).
@@ -396,3 +407,8 @@ Cleaning rules (applied before any statistic):
   `interest_rates` (migration applied via the MCP), the payment view and the rates tab.
   Pending owner: send the two data requests. Next: pre-2017 city history, or source-failure
   alerts.
+- **2026-10-31 (2)** — Owner chose site improvements, all at once: headline cards, kind
+  explanations, place side panel, affordability calculator (user-set payment share), theme
+  toggle, mobile fixes and a share image. Prime stays as the prime rate (owner decision).
+  The two data requests are not sent yet. Next: pre-2017 city history, alerts, or more BOI
+  mortgage data.

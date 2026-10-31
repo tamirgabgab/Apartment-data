@@ -5,6 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>מחירי דירות בישראל</title>
   <meta name="description" content="איך השתנו מחירי הדירות, שכר הדירה וריביות המשכנתא בכל מחוז ועיר גדולה בישראל, רבעון אחרי רבעון, לפי נתוני הלשכה המרכזית לסטטיסטיקה ובנק ישראל.">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="he_IL">
+  <meta property="og:title" content="מחירי דירות בישראל">
+  <meta property="og:description" content="מחירי דירות, שכר דירה וההחזר על משכנתא בכל מחוז ועיר גדולה, רבעון אחרי רבעון. נתוני הלמ&quot;ס ובנק ישראל.">
+  <meta property="og:url" content="https://apartment-data.vercel.app/">
+  <meta property="og:image" content="https://apartment-data.vercel.app/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M8 15l8-7 8 7v9h-5v-6h-6v6H8z' fill='white'/%3E%3C/svg%3E">
+  <script>
+    // Apply a saved theme before the page paints, to avoid a flash of the wrong colours.
+    try {
+      const saved = localStorage.getItem("theme");
+      if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+    } catch {}
+  </script>
   <link rel="stylesheet" href="style.css">
   <script defer src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
   <script defer src="app.js"></script>
@@ -12,10 +31,15 @@
 <body>
   <main class="viz-root">
     <header class="page-header">
-      <h1>מחירי דירות בישראל</h1>
+      <div class="title-row">
+        <h1>מחירי דירות בישראל</h1>
+        <button type="button" class="action theme-toggle" id="theme" aria-label="ערכת צבעים"></button>
+      </div>
       <p class="lead">איך השתנו מחירי הדירות, שכר הדירה וההחזר על משכנתא בכל מחוז ובכל עיר גדולה, רבעון אחרי רבעון.</p>
       <p class="updated" id="updated"></p>
     </header>
+
+    <section class="kpis" id="kpis" aria-label="המספרים העיקריים"></section>
 
     <section class="controls" aria-label="אפשרויות תצוגה">
       <div class="control">
@@ -70,12 +94,14 @@
         <button type="button" class="action" id="download">הורדת CSV</button>
       </div>
     </section>
+    <p class="explain" id="explain"></p>
 
     <nav class="tabs" role="tablist" aria-label="תצוגות">
       <button type="button" role="tab" id="tab-map" aria-controls="panel-map" data-tab="map">מפה</button>
       <button type="button" role="tab" id="tab-line" aria-controls="panel-line" data-tab="line">לאורך זמן</button>
       <button type="button" role="tab" id="tab-heat" aria-controls="panel-heat" data-tab="heat">מפת חום</button>
       <button type="button" role="tab" id="tab-rates" aria-controls="panel-rates" data-tab="rates">ריביות</button>
+      <button type="button" role="tab" id="tab-calc" aria-controls="panel-calc" data-tab="calc">כמה אפשר להרשות</button>
     </nav>
 
     <section class="panel" id="panel-map" role="tabpanel" aria-labelledby="tab-map">
@@ -87,7 +113,7 @@
             <output id="time-label" for="time"></output>
           </div>
           <div id="map" class="chart chart-map" role="img" aria-label="מפת מחירים לפי מחוז ועיר"></div>
-          <p class="hint">גוררים את הסרגל או לוחצים ▶ כדי לראות את השינוי לאורך הזמן. אפשר להתקרב במפה בגלילה.</p>
+          <p class="hint">גוררים את הסרגל או לוחצים ▶ כדי לראות את השינוי לאורך הזמן. אפשר להתקרב במפה בגלילה, וללחוץ על עיר או מחוז כדי לראות את כל הנתונים עליו.</p>
         </div>
         <div class="card table-card">
           <h2 id="rank-title">דירוג</h2>
@@ -126,6 +152,53 @@
       </div>
     </section>
 
+    <section class="panel" id="panel-calc" role="tabpanel" aria-labelledby="tab-calc" hidden>
+      <div class="calc-layout">
+        <form class="card calc-form" id="calc-form" onsubmit="return false">
+          <h2>הנתונים שלכם</h2>
+          <label class="field">
+            <span>הכנסה חודשית נטו של משק הבית (₪)</span>
+            <input type="number" id="calc-income" class="num-input wide" min="0" step="500" inputmode="numeric">
+          </label>
+          <label class="field">
+            <span>הון עצמי (₪)</span>
+            <input type="number" id="calc-equity" class="num-input wide" min="0" step="10000" inputmode="numeric">
+          </label>
+          <label class="field">
+            <span>החזר חודשי מקסימלי (% מההכנסה)</span>
+            <input type="number" id="calc-pti" class="num-input" min="5" max="60" step="1" inputmode="numeric">
+          </label>
+          <label class="field">
+            <span>מסלול</span>
+            <select id="calc-track"></select>
+          </label>
+          <label class="field">
+            <span>תקופה (שנים)</span>
+            <input type="number" id="calc-years" class="num-input" min="1" max="40" step="1" inputmode="numeric">
+          </label>
+          <label class="field">
+            <span>חדרים</span>
+            <select id="calc-rooms"></select>
+          </label>
+          <p class="hint">המימון מוגבל ל-75% ממחיר הדירה, כמו בהוראות בנק ישראל לדירה ראשונה. ההכנסה וההון העצמי נשמרים רק בדפדפן שלכם ולא נכללים בקישור לשיתוף.</p>
+        </form>
+        <div class="calc-results">
+          <div class="card calc-headline" id="calc-headline" aria-live="polite"></div>
+          <div class="card table-card">
+            <h2 id="calc-title">איפה זה מספיק</h2>
+            <div class="table-wrap">
+              <table class="rank" aria-labelledby="calc-title">
+                <thead>
+                  <tr><th scope="col">מקום</th><th scope="col">מחיר ממוצע</th><th scope="col">החזר חודשי</th><th scope="col">מצב</th></tr>
+                </thead>
+                <tbody id="calc-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <footer class="notes">
       <h2>על הנתונים</h2>
       <ul id="notes"></ul>
@@ -136,6 +209,24 @@
         קוד פתוח: <a href="https://github.com/tamirgabgab/Apartment-data">GitHub</a>.
       </p>
     </footer>
+    <aside class="place-panel" id="place-panel" role="dialog" aria-labelledby="pp-title" hidden>
+      <div class="pp-head">
+        <div>
+          <h2 id="pp-title"></h2>
+          <p class="pp-sub" id="pp-sub"></p>
+        </div>
+        <button type="button" class="pp-close" id="pp-close" aria-label="סגירה">✕</button>
+      </div>
+      <div class="pp-stats" id="pp-stats"></div>
+      <h3 class="pp-h">מחיר ממוצע לאורך זמן</h3>
+      <div id="pp-chart" class="chart chart-mini" role="img" aria-label="מחיר ממוצע לאורך זמן לעומת כל הארץ"></div>
+      <h3 class="pp-h">לפי מספר חדרים</h3>
+      <table class="rank pp-rooms" id="pp-rooms"></table>
+      <div class="pp-actions">
+        <button type="button" class="action" id="pp-compare"></button>
+        <button type="button" class="action" id="pp-share">העתקת קישור</button>
+      </div>
+    </aside>
   </main>
 </body>
 </html>
