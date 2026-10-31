@@ -7,6 +7,7 @@ import psycopg
 
 from apartment_data.config import Settings
 from apartment_data.reference.localities import Locality
+from apartment_data.sources.boi_rates import RateValue
 from apartment_data.sources.cbs_index import IndexValue
 from apartment_data.sources.cbs_tables import AveragePrice
 
@@ -65,6 +66,22 @@ def upsert_official_indices(conn: psycopg.Connection, values: Iterable[IndexValu
                 series_name = excluded.series_name,
                 value = excluded.value,
                 base_period = excluded.base_period,
+                fetched_at = now()
+            """,
+            [astuple(v) for v in values],
+        )
+
+
+def upsert_interest_rates(conn: psycopg.Connection, values: Iterable[RateValue]) -> None:
+    """Insert or update monthly interest rates, keyed by series and month."""
+    with conn.cursor() as cur:
+        cur.executemany(
+            """
+            insert into public.interest_rates (series_code, series_name, period, value)
+            values (%s, %s, %s, %s)
+            on conflict (series_code, period) do update set
+                series_name = excluded.series_name,
+                value = excluded.value,
                 fetched_at = now()
             """,
             [astuple(v) for v in values],

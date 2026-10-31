@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>מחירי דירות בישראל</title>
-  <meta name="description" content="איך השתנו מחירי הדירות ושכר הדירה בכל מחוז ועיר גדולה בישראל, רבעון אחרי רבעון, לפי נתוני הלשכה המרכזית לסטטיסטיקה.">
+  <meta name="description" content="איך השתנו מחירי הדירות, שכר הדירה וריביות המשכנתא בכל מחוז ועיר גדולה בישראל, רבעון אחרי רבעון, לפי נתוני הלשכה המרכזית לסטטיסטיקה ובנק ישראל.">
   <link rel="stylesheet" href="style.css">
   <script defer src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
   <script defer src="app.js"></script>
@@ -13,7 +13,7 @@
   <main class="viz-root">
     <header class="page-header">
       <h1>מחירי דירות בישראל</h1>
-      <p class="lead">איך השתנו מחירי הדירות ושכר הדירה בכל מחוז ובכל עיר גדולה, רבעון אחרי רבעון.</p>
+      <p class="lead">איך השתנו מחירי הדירות, שכר הדירה וההחזר על משכנתא בכל מחוז ובכל עיר גדולה, רבעון אחרי רבעון.</p>
       <p class="updated" id="updated"></p>
     </header>
 
@@ -24,7 +24,20 @@
           <button type="button" role="radio" data-value="sale">מחיר דירה</button>
           <button type="button" role="radio" data-value="rent">שכר דירה</button>
           <button type="button" role="radio" data-value="ratio">יחס מחיר לשכירות</button>
+          <button type="button" role="radio" data-value="payment" id="kind-payment">החזר משכנתא</button>
         </div>
+      </div>
+      <div class="control payment-control">
+        <label class="control-label" for="track">מסלול</label>
+        <select id="track"></select>
+      </div>
+      <div class="control payment-control">
+        <label class="control-label" for="ltv">מימון (%)</label>
+        <input type="number" id="ltv" class="num-input" min="1" max="100" step="5" inputmode="numeric">
+      </div>
+      <div class="control payment-control">
+        <label class="control-label" for="years">שנים</label>
+        <input type="number" id="years" class="num-input" min="1" max="40" step="1" inputmode="numeric">
       </div>
       <div class="control">
         <label class="control-label" for="rooms">חדרים</label>
@@ -62,6 +75,7 @@
       <button type="button" role="tab" id="tab-map" aria-controls="panel-map" data-tab="map">מפה</button>
       <button type="button" role="tab" id="tab-line" aria-controls="panel-line" data-tab="line">לאורך זמן</button>
       <button type="button" role="tab" id="tab-heat" aria-controls="panel-heat" data-tab="heat">מפת חום</button>
+      <button type="button" role="tab" id="tab-rates" aria-controls="panel-rates" data-tab="rates">ריביות</button>
     </nav>
 
     <section class="panel" id="panel-map" role="tabpanel" aria-labelledby="tab-map">
@@ -104,11 +118,20 @@
       </div>
     </section>
 
+    <section class="panel" id="panel-rates" role="tabpanel" aria-labelledby="tab-rates" hidden>
+      <div class="card">
+        <h2 class="card-title">ריבית ממוצעת על משכנתאות חדשות, לפי מסלול</h2>
+        <div id="rates" class="chart chart-line" role="img" aria-label="גרף ריביות המשכנתא לאורך זמן"></div>
+        <p class="hint">ממוצע חודשי בכל המערכת הבנקאית. ריבית הפריים וריבית בנק ישראל הן הריבית בסוף כל חודש. בנק ישראל אינו מפרסם את הריבית הממוצעת במסלול הפריים עצמו.</p>
+      </div>
+    </section>
+
     <footer class="notes">
       <h2>על הנתונים</h2>
       <ul id="notes"></ul>
       <p>
-        מקור: <a href="https://www.cbs.gov.il">הלשכה המרכזית לסטטיסטיקה</a>.
+        מקורות: <a href="https://www.cbs.gov.il">הלשכה המרכזית לסטטיסטיקה</a>,
+        <a href="https://www.boi.org.il">בנק ישראל</a> (ריביות).
         גבולות המחוזות: <a href="https://www.geoboundaries.org">geoBoundaries</a> (נחלת הכלל).
         קוד פתוח: <a href="https://github.com/tamirgabgab/Apartment-data">GitHub</a>.
       </p>

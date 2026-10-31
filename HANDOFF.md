@@ -3,7 +3,7 @@
 Living document that carries project context between work sessions.
 Read it at the start of every session and update it at the end.
 
-_Last updated: 2026-10-30_
+_Last updated: 2026-10-31_
 
 ---
 
@@ -40,10 +40,9 @@ the README.
     no policies on purpose: the website reads static JSON, only the ingestion jobs
     (postgres role via `DATABASE_URL`) touch the database.
   - Migration `index_tweaks` applied: index on `locality_aliases.locality_code`.
-  - Deferred: `drop index public.deals_valid_locality_date_idx` (redundant partial index,
-    saves a little storage). The Supabase MCP asks for a confirmation on destructive
-    statements and the prompt never reached the owner, so it was split out. Run it in
-    a later migration, or by hand in the Supabase SQL Editor.
+  - The redundant partial index `deals_valid_locality_date_idx` was dropped by the owner in
+    the SQL Editor on 2026-10-31 (the Supabase MCP confirmation prompt for destructive
+    statements never reaches the owner, so such statements are run by hand).
 - **Vercel:** project `apartment-data` (id `prj_859ty9pe0LsMUupyS13M2bnI4U9C`, team
   `team_ZhDyYoJQ7ch1tCHoRn41zIrH`, Hobby plan), linked to `tamirgabgab/Apartment-data`,
   root directory `web`. Production deploys from `main` to
@@ -55,7 +54,9 @@ the README.
   Allowed domains. Verified working on 2026-10-30: `www.nadlan.gov.il` (site HTML),
   `api.cbs.gov.il` (price-index API returns JSON; the bare root does not answer, that is
   normal), `data.gov.il` (CKAN API returns JSON; the bare root returns a WAF 403, that is
-  normal), `www.cbs.gov.il`, `apartment-data.vercel.app`. Yad2 / Madlan are not allowed
+  normal), `www.cbs.gov.il`, `apartment-data.vercel.app`; on 2026-10-31 also `www.boi.org.il`
+  and `edge.boi.org.il` (BOI SDMX API returns 200). Blocked: `cdn.jsdelivr.net` (only the
+  visitor's browser needs it) and `*.supabase.co` (use the MCP or Actions). Yad2 / Madlan are not allowed
   on purpose (deferred). GitHub Actions is not affected by these settings.
 - **Website:** https://apartment-data.vercel.app is public (no Vercel login).
 - **Phase 1:** `python -m apartment_data.reference.localities [--load]` builds
@@ -70,8 +71,7 @@ the README.
 - **Security note:** a malformed `DATABASE_URL` once printed part of the password into a
   public Actions log (logs deleted, password reset, `connect()` now hides the URL). Keep the
   database password to letters and digits.
-- Cleanup pending: `drop extension if exists http;` (installed for a one-off load; the
-  Supabase MCP confirmation prompt timed out). Run it in the SQL Editor.
+- The `http` extension (installed for a one-off load) was dropped by the owner on 2026-10-31.
 - **nadlan.gov.il is blocked by its Terms of Use** (see `docs/sources/nadlan.md`): they
   forbid scripts, bots and API use without explicit permission, and any non-personal use
   needs written approval; the deals API is behind reCAPTCHA Enterprise. Nothing is fetched
@@ -111,6 +111,17 @@ the README.
 - **Website features (round 2):** price-to-rent ratio (years of rent = sale price / yearly
   rent, rooms groups common to both tables), 4-quarter moving average toggle, share link
   (view kept in the URL hash), CSV download of the current view (UTF-8 BOM for Excel).
+- **Mortgage rates (Phase 2c):** `python -m apartment_data.sources.boi_rates [--load]` reads
+  the Bank of Israel SDMX API (see `docs/sources/boi.md`): monthly average rates on new
+  mortgages from 2011-07 for fixed unindexed, fixed CPI-linked and variable CPI-linked tracks,
+  and the policy rate (month end) plus prime = policy + 1.5. Table `interest_rates`. BOI does
+  not publish the prime track's own average rate, so the site uses the prime rate (owner
+  decision). The workflow runs it monthly (`job: boi-rates`).
+- **Website (round 3):** "החזר משכנתא" kind: opening monthly payment (Spitzer) on the average
+  sale price, with user-chosen track (default mix: ⅓ prime, ⅓ fixed unindexed, ⅓ fixed
+  CPI-linked), LTV (default 70%) and term (default 25 years), at the quarter's mean rate. It
+  works in every view (map, ranking, line, heatmap, % change, real prices, CSV, share link).
+  New "ריביות" tab with the monthly rates chart and a rates CSV.
 - If deal data arrives later: raw responses go to a private Supabase Storage bucket, and the
   pilot cities are Tel Aviv-Yafo, Jerusalem, Haifa, Beer Sheva, Sderot (owner decisions).
 
@@ -266,7 +277,7 @@ Cleaning rules (applied before any statistic):
 - [x] CI workflow (lint + tests).
 - [x] Create the Supabase project and apply the initial schema.
 - [x] Apply the `index_tweaks` migration.
-- [ ] Drop the redundant partial index `deals_valid_locality_date_idx` (deferred).
+- [x] Drop the redundant partial index `deals_valid_locality_date_idx`.
 - [x] Create the Vercel project and link it to the repository.
 - [x] Add `DATABASE_URL` as a GitHub repository secret.
 - [x] Merge to `main`, get the production URL, put it in `README.md`.
@@ -283,7 +294,8 @@ Cleaning rules (applied before any statistic):
 - [x] CBS average prices and rents by district and big city (`cbs_tables`).
 - [x] New dwellings price index (from 2019).
 - [ ] Average prices by city before 2017 (search older CBS publications).
-- [ ] Bank of Israel mortgage rates (owner asked; needs the BOI host in Allowed domains).
+- [x] Bank of Israel mortgage rates by track, policy and prime rate (`boi_rates`).
+- [ ] Mortgage volumes, number of loans, term and payment-to-income (same BOI dataflow).
 
 ### Phase 3 — Transactions (blocked: needs permission or FOI data)
 - [x] Investigate the current API, document it in `docs/sources/nadlan.md` (ToS forbid it).
@@ -306,6 +318,7 @@ Cleaning rules (applied before any statistic):
 ### Phase 6 — Website
 - [x] JSON export job.
 - [x] Interactive site on CBS data: map + time slider, line chart, heatmap, ranking.
+- [x] Mortgage payment view and rates chart.
 
 ### Phase 7 — Automation
 - [x] GitHub Actions monthly CBS update and website re-export (`update-data.yml`).
@@ -377,3 +390,9 @@ Cleaning rules (applied before any statistic):
   (Q1 values shifted a year) with regression tests and a full rebuild. Pending owner: add
   `www.boi.org.il` and `edge.boi.org.il` to Allowed domains. Next: mortgage rates,
   pre-2017 history.
+- **2026-10-31 (1)** — Checked network access: BOI hosts are now allowed. Owner ran the
+  pending cleanup in the SQL Editor (dropped the `http` extension and the redundant partial
+  index), verified via the MCP. Owner chose mortgage rates: added the BOI fetcher, table
+  `interest_rates` (migration applied via the MCP), the payment view and the rates tab.
+  Pending owner: send the two data requests. Next: pre-2017 city history, or source-failure
+  alerts.

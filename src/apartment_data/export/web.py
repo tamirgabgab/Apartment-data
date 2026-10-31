@@ -41,6 +41,21 @@ NOTES = [
     "יחס מחיר לשכירות: המחיר הממוצע של דירה חלקי שכר הדירה השנתי הממוצע באותו מקום "
     "ורבעון, כלומר כמה שנות שכירות שווה דירה. זה יחס בין שני ממוצעים, לא של אותן דירות.",
     "ממוצע נע: הממוצע של 4 הרבעונים האחרונים, שמחליק קפיצות בין רבעונים.",
+    "ריביות: הריבית הממוצעת על משכנתאות חדשות לפי מסלול, בכל המערכת הבנקאית, מתוך נתוני "
+    "בנק ישראל. בנק ישראל אינו מפרסם את הריבית במסלול הפריים, ולכן מוצגת ריבית הפריים "
+    "עצמה (ריבית בנק ישראל ועוד 1.5%). במסלול הפריים בפועל הבנקים נותנים לרוב הנחה או "
+    "תוספת על ריבית זו.",
+    "החזר חודשי: ההחזר ההתחלתי על הלוואה בלוח שפיצר, לפי המחיר הממוצע, אחוז המימון, "
+    "התקופה והריבית הממוצעת באותו רבעון. במסלולים צמודים ההחזר גדל עם המדד, ובמסלול "
+    "הפריים הוא משתנה עם הריבית. התמהיל הוא שליש פריים, שליש קבועה לא צמודה ושליש "
+    "קבועה צמודה. זו הערכה, לא הצעה של בנק.",
+]
+RATE_ORDER = [
+    "mortgage_fixed_unindexed",
+    "mortgage_fixed_cpi",
+    "mortgage_variable_cpi",
+    "prime",
+    "boi_rate",
 ]
 
 
@@ -93,10 +108,45 @@ def quarterly_mean(monthly: dict[date, float]) -> dict[date, float]:
     return {q: fmean(v) for q, v in groups.items() if len(v) == 3}
 
 
+def build_rates(rates: list[dict[str, Any]], periods: list[date]) -> dict[str, Any]:
+    """Monthly rates for the rates chart, and quarterly means aligned with the price periods.
+
+    The chart starts at the first month with mortgage rates. A quarter's mean uses the months
+    published so far, so the newest quarter can rest on one or two months.
+    """
+    monthly: dict[str, dict[date, float]] = defaultdict(dict)
+    names: dict[str, str] = {}
+    for row in rates:
+        code = str(row["series_code"])
+        monthly[code][_date(row["period"])] = float(row["value"])
+        names[code] = str(row["series_name"])
+    mortgage_months = [m for c, v in monthly.items() if c.startswith("mortgage_") for m in v]
+    if not mortgage_months:
+        return {"months": [], "series": {}, "quarterly": {}}
+    start = min(mortgage_months)
+    months = sorted({m for v in monthly.values() for m in v if m >= start})
+    codes = [c for c in RATE_ORDER if c in monthly]
+    quarterly = {}
+    for code in codes:
+        groups: dict[date, list[float]] = defaultdict(list)
+        for month, value in monthly[code].items():
+            groups[quarter_of(month)].append(value)
+        quarterly[code] = [round(fmean(groups[p]), 3) if p in groups else None for p in periods]
+    return {
+        "months": [m.isoformat() for m in months],
+        "series": {
+            code: {"name": names[code], "values": [monthly[code].get(m) for m in months]}
+            for code in codes
+        },
+        "quarterly": quarterly,
+    }
+
+
 def build_payload(
     localities: list[dict[str, Any]],
     indices: list[dict[str, Any]],
     prices: list[dict[str, Any]],
+    rates: list[dict[str, Any]] | None = None,
     generated_at: datetime | None = None,
 ) -> dict[str, Any]:
     periods = sorted({_date(p["period"]) for p in prices})
@@ -178,11 +228,12 @@ def build_payload(
         "real_base": base_quarter.isoformat() if base_quarter else None,
         "indices": index_payload,
         "district_index": {f"d{c}": idx for c, (_, _, idx) in DISTRICTS.items()},
+        "rates": build_rates(rates or [], periods),
         "notes": NOTES,
     }
 
 
-def load_from_db(settings) -> tuple[list[dict], list[dict], list[dict]]:
+def load_from_db(settings) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
     from psycopg.rows import dict_row
 
     from apartment_data.storage.db import connect
@@ -194,18 +245,22 @@ def load_from_db(settings) -> tuple[list[dict], list[dict], list[dict]]:
         indices = cur.fetchall()
         cur.execute("select * from public.cbs_average_prices")
         prices = cur.fetchall()
-    return localities, indices, prices
+        cur.execute("select * from public.interest_rates")
+        rates = cur.fetchall()
+    return localities, indices, prices, rates
 
 
-def load_from_csv(data_dir: Path) -> tuple[list[dict], list[dict], list[dict]]:
+def load_from_csv(data_dir: Path) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
     def read(path: Path) -> list[dict]:
         with path.open(encoding="utf-8") as f:
             return list(csv.DictReader(f))
 
+    rates = data_dir / "boi" / "interest_rates.csv"
     return (
         read(data_dir / "reference" / "localities.csv"),
         read(data_dir / "cbs" / "official_indices.csv"),
         read(data_dir / "cbs" / "average_prices.csv"),
+        read(rates) if rates.exists() else [],
     )
 
 
