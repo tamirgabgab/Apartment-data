@@ -309,7 +309,7 @@ Cleaning rules (applied before any statistic):
 ### Phase 3 — Transactions (blocked: needs permission or FOI data)
 - [x] Investigate the current API, document it in `docs/sources/nadlan.md` (ToS forbid it).
 - [x] Draft the permission request and the FOI request (`docs/requests/`).
-- [ ] Owner sends both requests; track the answers here.
+- [ ] Owner sends both requests (guide: `docs/requests/HOW-TO-SEND.md`); track the answers here.
 - [ ] Fetcher per city and date range, with throttling, retries and raw caching.
 - [ ] Pilot on 3–5 cities, check how far back the data really goes.
 - [ ] Backfill all cities from 2000 (or the earliest available year).
